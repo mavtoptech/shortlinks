@@ -51,15 +51,15 @@ export function DomainCard({ domain }: { domain: Domain }) {
       {/* Header section */}
       <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <h3 className="text-lg font-bold">{domain.domain}</h3>
+          <h3 className="text-lg font-bold text-primary">{domain.domain}</h3>
           
           {isPending || error ? (
-            <span className="badge" style={{ backgroundColor: 'rgba(245,158,11,0.1)', color: 'var(--warning)', border: '1px solid rgba(245,158,11,0.2)' }}>
+            <span className="badge" style={{ backgroundColor: 'rgba(247,144,9,0.1)', color: 'var(--warning)' }}>
               <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--warning)', marginRight: '6px' }}></div> 
               Invalid Configuration
             </span>
           ) : (
-            <span className="badge" style={{ backgroundColor: 'rgba(16,185,129,0.1)', color: 'var(--success)', border: '1px solid rgba(16,185,129,0.2)' }}>
+            <span className="badge" style={{ backgroundColor: 'rgba(11,158,105,0.1)', color: 'var(--success)' }}>
               <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--success)', marginRight: '6px' }}></div> 
               Valid Configuration
             </span>
@@ -81,54 +81,54 @@ export function DomainCard({ domain }: { domain: Domain }) {
 
       {/* Configuration Instructions */}
       {(isPending || error) && (
-        <div style={{ padding: '1.5rem', backgroundColor: 'rgba(0,0,0,0.2)' }}>
+        <div style={{ padding: '1.5rem', backgroundColor: 'var(--bg-secondary)' }}>
           {error && (
-            <div style={{ marginBottom: '1rem', padding: '0.75rem', backgroundColor: 'rgba(239,68,68,0.1)', color: 'var(--error)', borderRadius: '6px', fontSize: '0.875rem' }}>
+            <div style={{ marginBottom: '1rem', padding: '0.75rem', backgroundColor: 'rgba(217,45,32,0.1)', color: 'var(--error)', borderRadius: '6px', fontSize: '0.875rem', fontWeight: '500' }}>
               <strong>Error:</strong> {error}
             </div>
           )}
           
           <div className="mb-4">
-            <h4 className="font-semibold text-gray-200 mb-1">How to configure your domain</h4>
+            <h4 className="font-semibold text-primary mb-1">How to configure your domain</h4>
             <p className="text-secondary text-sm">
               Log in to your domain registrar (e.g., GoDaddy, Cloudflare, Namecheap) and navigate to the DNS settings. 
               Add a new <strong>CNAME</strong> record using the exact values below. Once added, click "Verify Status" above.
             </p>
           </div>
           
-          <div style={{ overflowX: 'auto', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+          <div style={{ overflowX: 'auto', border: '1px solid var(--border-color)', borderRadius: '8px', backgroundColor: 'var(--bg-primary)' }}>
             <table className="data-table" style={{ margin: 0, width: '100%', textAlign: 'left' }}>
               <thead>
                 <tr>
-                  <th style={{ backgroundColor: 'rgba(255,255,255,0.02)', padding: '0.75rem 1rem' }}>Type</th>
-                  <th style={{ backgroundColor: 'rgba(255,255,255,0.02)', padding: '0.75rem 1rem' }}>Name / Host</th>
-                  <th style={{ backgroundColor: 'rgba(255,255,255,0.02)', padding: '0.75rem 1rem' }}>Value / Target</th>
+                  <th style={{ backgroundColor: 'var(--bg-tertiary)', padding: '0.75rem 1rem' }}>Type</th>
+                  <th style={{ backgroundColor: 'var(--bg-tertiary)', padding: '0.75rem 1rem' }}>Name / Host</th>
+                  <th style={{ backgroundColor: 'var(--bg-tertiary)', padding: '0.75rem 1rem' }}>Value / Target</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td style={{ padding: '1rem', borderTop: '1px solid var(--border-color)' }}>
+                  <td data-label="Type" style={{ padding: '1rem', borderTop: '1px solid var(--border-color)' }}>
                     <div className="flex items-center gap-2">
-                      <span style={{ fontFamily: 'monospace' }}>CNAME</span>
+                      <span style={{ fontFamily: 'monospace', fontWeight: '500', color: 'var(--text-primary)' }}>CNAME</span>
                     </div>
                   </td>
-                  <td style={{ padding: '1rem', borderTop: '1px solid var(--border-color)' }}>
+                  <td data-label="Name / Host" style={{ padding: '1rem', borderTop: '1px solid var(--border-color)' }}>
                     <div className="flex items-center justify-between gap-4">
-                      <span style={{ fontFamily: 'monospace' }}>{cnameName}</span>
+                      <span style={{ fontFamily: 'monospace', fontWeight: '500', color: 'var(--text-primary)' }}>{cnameName}</span>
                       <button 
                         onClick={() => handleCopy(cnameName, 'name')}
-                        style={{ background: 'rgba(59,130,246,0.1)', color: 'var(--accent-primary)', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem' }}
+                        style={{ background: 'rgba(0,130,243,0.1)', color: 'var(--accent-primary)', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600' }}
                       >
                         {copied === 'name' ? 'Copied!' : 'Copy'}
                       </button>
                     </div>
                   </td>
-                  <td style={{ padding: '1rem', borderTop: '1px solid var(--border-color)' }}>
+                  <td data-label="Value / Target" style={{ padding: '1rem', borderTop: '1px solid var(--border-color)' }}>
                     <div className="flex items-center justify-between gap-4">
-                      <span style={{ fontFamily: 'monospace' }}>{CNAME_TARGET}</span>
+                      <span style={{ fontFamily: 'monospace', fontWeight: '500', color: 'var(--text-primary)' }}>{CNAME_TARGET}</span>
                       <button 
                         onClick={() => handleCopy(CNAME_TARGET, 'value')}
-                        style={{ background: 'rgba(59,130,246,0.1)', color: 'var(--accent-primary)', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem' }}
+                        style={{ background: 'rgba(0,130,243,0.1)', color: 'var(--accent-primary)', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600' }}
                       >
                         {copied === 'value' ? 'Copied!' : 'Copy'}
                       </button>

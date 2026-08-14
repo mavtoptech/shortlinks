@@ -1,13 +1,14 @@
 'use server'
 
-import { requireAuth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { createClient } from "@/utils/supabase/server";
 import { revalidatePath } from "next/cache";
 import { getOrCreateWorkspace } from "./workspace";
 import crypto from "crypto";
 
 export async function createShortLink(formData: FormData) {
-  const userId = await requireAuth();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
   const originalUrl = formData.get('originalUrl') as string;
   const domainId = formData.get('domainId') as string;
@@ -31,14 +32,16 @@ export async function createShortLink(formData: FormData) {
   // In a real production app, we would loop to ensure uniqueness if there's a collision
   const shortCode = crypto.randomBytes(4).toString('base64url').slice(0, 6);
 
-  await prisma.shortUrl.create({
-    data: {
-      originalUrl: parsedUrl.toString(),
-      shortCode,
-      workspaceId: workspace.id,
-      domainId: domainId === 'default' ? null : domainId,
-    }
-  });
+  const { error } = await supabase
+    .from('short_urls')
+    .insert({
+      original_url: parsedUrl.toString(),
+      short_code: shortCode,
+      workspace_id: workspace.id,
+      domain_id: domainId === 'default' ? null : domainId,
+    });
+
+  if (error) throw new Error(error.message);
 
   revalidatePath('/dashboard');
 }

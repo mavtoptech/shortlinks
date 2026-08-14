@@ -1,9 +1,7 @@
 "use server";
 
-import { prisma } from "@/lib/prisma";
-import { createSession, deleteSession } from "@/lib/auth";
+import { createClient } from "@/utils/supabase/server";
 import { redirect } from "next/navigation";
-import bcrypt from "bcryptjs";
 
 export async function signUp(prevState: any, formData: FormData) {
   const email = formData.get("email") as string;
@@ -14,22 +12,22 @@ export async function signUp(prevState: any, formData: FormData) {
     return { error: "Email and password are required" };
   }
 
-  const existingUser = await prisma.user.findUnique({ where: { email } });
-  if (existingUser) {
-    return { error: "User with this email already exists" };
-  }
+  const supabase = await createClient();
 
-  const passwordHash = await bcrypt.hash(password, 10);
-
-  const user = await prisma.user.create({
-    data: {
-      email,
-      passwordHash,
-      name,
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        name,
+      },
     },
   });
 
-  await createSession(user.id);
+  if (error) {
+    return { error: error.message };
+  }
+
   redirect("/dashboard");
 }
 
@@ -41,21 +39,22 @@ export async function signIn(prevState: any, formData: FormData) {
     return { error: "Email and password are required" };
   }
 
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) {
-    return { error: "Invalid email or password" };
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error) {
+    return { error: error.message };
   }
 
-  const valid = await bcrypt.compare(password, user.passwordHash);
-  if (!valid) {
-    return { error: "Invalid email or password" };
-  }
-
-  await createSession(user.id);
   redirect("/dashboard");
 }
 
 export async function signOut() {
-  await deleteSession();
+  const supabase = await createClient();
+  await supabase.auth.signOut();
   redirect("/sign-in");
 }

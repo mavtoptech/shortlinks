@@ -1,43 +1,51 @@
-import { requireAuth } from "@/lib/auth";
-import { getOrCreateWorkspace, getWorkspaceDomains, getWorkspaceLinks } from "@/app/actions/workspace";
-import { createShortLink } from "@/app/actions/link";
+import { createClient } from "@/utils/supabase/server";
+import { redirect } from "next/navigation";
+import { getOrCreateWorkspace, getWorkspaceDomains, getWorkspaceLinks } from "../actions/workspace";
+import { createShortLink } from "../actions/link";
 import { APP_DOMAIN } from "@/lib/constants";
 
 export default async function DashboardPage() {
-  const userId = await requireAuth();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/sign-in");
 
-  // Fetch real data from Supabase
   const workspace = await getOrCreateWorkspace();
   const domains = await getWorkspaceDomains(workspace.id);
   const links = await getWorkspaceLinks(workspace.id);
 
-  return (
-    <div style={{ maxWidth: '64rem', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      <div>
-        <h1 className="text-3xl font-bold mb-2">Welcome to Linkr</h1>
-        <p className="text-secondary">Manage your short links and track their performance.</p>
-      </div>
+  const totalClicks = links.reduce((sum, link) => sum + link.clicks_count, 0);
 
-      {/* Create Link Section */}
-      <div className="glass-panel p-6">
-        <h2 className="text-xl font-semibold mb-4">Create New Link</h2>
-        <form action={createShortLink} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-          <input 
-            type="url" 
-            name="originalUrl"
-            placeholder="Paste your long URL here... (e.g., https://example.com/very/long/path)" 
-            className="input-field flex-1"
-            required
-            style={{ minWidth: '250px' }}
-          />
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <select name="domainId" className="input-field" style={{ width: '200px', cursor: 'pointer' }}>
-              <option value="default">{APP_DOMAIN} (Default)</option>
-              {domains.filter(d => d.status === 'active').map(d => (
-                <option key={d.id} value={d.id}>{d.domain}</option>
-              ))}
-            </select>
-            <button type="submit" className="btn-primary" style={{ whiteSpace: 'nowrap' }}>
+  return (
+    <div style={{ maxWidth: '64rem', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '3rem' }}>
+      
+      {/* Bitly-Style Hero Quick Shortener */}
+      <div className="glass-panel" style={{ padding: '2rem 1.5rem', textAlign: 'center', backgroundColor: '#ffffff' }}>
+        <h1 className="text-3xl font-bold mb-3">Shorten a long link</h1>
+        <p className="text-secondary text-base mb-6 max-w-xl mx-auto">
+          No credit card required. Instantly create short links, custom domains, and track their performance.
+        </p>
+        <form action={createShortLink} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: '48rem', margin: '0 auto' }}>
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', width: '100%' }}>
+            <input 
+              type="url" 
+              name="originalUrl"
+              placeholder="Paste your long URL here (https://...)" 
+              className="input-field flex-1"
+              required
+              style={{ fontSize: '1.125rem', padding: '1rem 1.5rem' }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: '300px' }}>
+              <span className="text-sm font-semibold text-secondary whitespace-nowrap">Domain:</span>
+              <select name="domainId" className="input-field" style={{ cursor: 'pointer', padding: '0.75rem 1rem' }}>
+                <option value="default">{APP_DOMAIN} (Default)</option>
+                {domains.filter(d => d.status === 'active').map(d => (
+                  <option key={d.id} value={d.id}>{d.domain}</option>
+                ))}
+              </select>
+            </div>
+            <button type="submit" className="btn-accent" style={{ padding: '0.85rem 2rem', fontSize: '1.125rem', minWidth: '200px' }}>
               Shorten URL
             </button>
           </div>
@@ -46,9 +54,11 @@ export default async function DashboardPage() {
 
       {/* Links Table Section */}
       <div className="glass-panel" style={{ overflow: 'hidden' }}>
-        <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 className="text-xl font-semibold">Your Links</h2>
-          <div className="text-sm text-secondary">Total Clicks: {links.reduce((acc, curr) => acc + curr.clicksCount, 0)}</div>
+        <div style={{ padding: '1.5rem 2rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 className="text-xl font-bold">Your Links</h2>
+          <div className="badge" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}>
+            Total Clicks: {totalClicks}
+          </div>
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table className="data-table">
@@ -56,37 +66,42 @@ export default async function DashboardPage() {
               <tr>
                 <th>Original URL</th>
                 <th>Short Link</th>
-                <th>Clicks</th>
-                <th className="text-right">Actions</th>
+                <th style={{ width: '100px', textAlign: 'center' }}>Clicks</th>
+                <th className="text-right" style={{ width: '150px' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {links.map((link) => {
                 const domainName = link.domain ? link.domain.domain : APP_DOMAIN;
-                const fullShortUrl = `${domainName}/${link.shortCode}`;
+                const fullShortUrl = `${domainName}/${link.short_code}`;
                 
                 return (
                   <tr key={link.id}>
-                    <td style={{ maxWidth: '300px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={link.originalUrl}>{link.originalUrl}</td>
-                    <td>
-                      <a href={`https://${fullShortUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>
+                    <td data-label="Original URL" style={{ maxWidth: '300px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={link.original_url}>
+                      {link.original_url}
+                    </td>
+                    <td data-label="Short Link">
+                      <a href={`https://${fullShortUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', fontWeight: '500', textDecoration: 'none' }}>
                         {fullShortUrl}
                       </a>
                     </td>
-                    <td>
-                      <span className="badge badge-neutral">{link.clicksCount}</span>
+                    <td data-label="Clicks" style={{ textAlign: 'center' }}>
+                      <span className="badge" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}>
+                        {link.clicks_count}
+                      </span>
                     </td>
-                    <td className="text-right">
-                      <button style={{ color: 'var(--text-secondary)', marginRight: '1rem' }}>Copy</button>
-                      <button className="text-error">Delete</button>
+                    <td data-label="Actions" className="text-right">
+                      <button className="btn-text-action" style={{ marginRight: '1.5rem' }}>Copy</button>
+                      <button className="text-error" style={{ fontWeight: '500' }}>Delete</button>
                     </td>
                   </tr>
                 );
               })}
               {links.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="p-8 text-center text-secondary">
-                    No links created yet. Create your first link above!
+                  <td colSpan={4} className="p-8 text-center text-secondary" style={{ padding: '4rem 2rem' }}>
+                    <div style={{ fontSize: '1.125rem', marginBottom: '0.5rem', color: 'var(--text-primary)', fontWeight: '600' }}>No links created yet</div>
+                    Create your first short link using the field above!
                   </td>
                 </tr>
               )}

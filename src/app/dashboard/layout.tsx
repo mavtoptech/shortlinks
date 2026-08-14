@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "@/app/actions/auth";
+import { useState } from "react";
 
 export default function DashboardLayout({
   children,
@@ -10,46 +11,76 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
     <div className="dashboard-layout">
+      {/* Mobile Header */}
+      <div className="mobile-header">
+        <Link href="/dashboard" className="text-xl font-bold text-gradient">
+          ShortLinks
+        </Link>
+        <button className="hamburger-btn" onClick={() => setIsSidebarOpen(true)}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      {/* Sidebar Overlay (Mobile) */}
+      {isSidebarOpen && (
+        <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)}></div>
+      )}
+
       {/* Sidebar */}
-      <aside className="dashboard-sidebar">
-        <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--border-color)' }}>
-          <Link href="/dashboard" className="text-2xl font-bold text-gradient">
-            Linkr
+      <aside className={`dashboard-sidebar ${isSidebarOpen ? 'open' : ''}`}>
+        <div className="dashboard-logo" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+          <Link href="/dashboard" className="text-2xl font-bold text-gradient" onClick={() => setIsSidebarOpen(false)}>
+            ShortLinks
           </Link>
+          <button className="close-sidebar-btn md:hidden" onClick={() => setIsSidebarOpen(false)}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
         </div>
-        <nav style={{ flex: 1, padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <nav className="dashboard-nav">
           <Link 
             href="/dashboard" 
             className={`dashboard-nav-item ${pathname === '/dashboard' ? 'active' : ''}`}
+            onClick={() => setIsSidebarOpen(false)}
           >
             Dashboard
           </Link>
           <Link 
             href="/dashboard/domains" 
             className={`dashboard-nav-item ${pathname?.startsWith('/dashboard/domains') ? 'active' : ''}`}
+            onClick={() => setIsSidebarOpen(false)}
           >
             Custom Domains
           </Link>
           <Link 
             href="/dashboard/settings" 
             className={`dashboard-nav-item ${pathname?.startsWith('/dashboard/settings') ? 'active' : ''}`}
+            onClick={() => setIsSidebarOpen(false)}
           >
             Settings
           </Link>
         </nav>
-        <div style={{ padding: '1rem', borderTop: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">
+        <div className="dashboard-profile">
+          <div className="flex items-center gap-3">
+            <div style={{ width: '2rem', height: '2rem', borderRadius: '50%', backgroundColor: 'var(--accent-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: '700', fontSize: '0.875rem' }}>
               U
             </div>
-            <span className="text-sm text-secondary hidden sm:block">My Account</span>
+            <span className="text-sm font-medium text-primary block">My Account</span>
           </div>
           <button 
             onClick={() => signOut()}
-            className="text-xs text-error hover:text-red-400 p-2"
+            className="text-xs text-secondary hover:text-error p-2 font-medium"
+            style={{ transition: 'color var(--transition-fast)' }}
           >
             Sign Out
           </button>

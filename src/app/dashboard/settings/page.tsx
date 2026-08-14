@@ -1,62 +1,69 @@
-import { requireAuth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { createClient } from "@/utils/supabase/server";
 import { updateProfile } from "@/app/actions/settings";
+import { redirect } from "next/navigation";
 
 export default async function SettingsPage() {
-  const userId = await requireAuth();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
   
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-  });
+  if (!user) redirect("/sign-in");
 
-  if (!user) return null;
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single();
 
   return (
-    <div style={{ maxWidth: '48rem', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      <div>
-        <h1 className="text-3xl font-bold mb-2">Account Settings</h1>
-        <p className="text-secondary">Manage your profile and preferences.</p>
-      </div>
-
-      <div className="glass-panel p-6 sm:p-8">
-        <h2 className="text-xl font-bold mb-6 text-gray-200">Profile Information</h2>
+    <div>
+      <h1 className="text-2xl font-bold mb-6">Settings</h1>
+      
+      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+        <h2 className="text-lg font-medium mb-4">Profile Information</h2>
         
-        <form action={updateProfile} className="flex flex-col gap-6">
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-gray-300">Email Address</label>
-            <input 
-              type="email" 
-              value={user.email} 
-              disabled 
-              className="input-field opacity-50 cursor-not-allowed" 
+        <form action={updateProfile} className="space-y-4 max-w-md">
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+              Email Address
+            </label>
+            <input
+              type="email"
+              id="email"
+              disabled
+              value={user.email}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
             />
-            <p className="text-xs text-gray-500">Email cannot be changed.</p>
+            <p className="mt-1 text-xs text-gray-500">Email cannot be changed currently.</p>
           </div>
-
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-gray-300">Full Name</label>
-            <input 
-              type="text" 
-              name="name" 
-              defaultValue={user.name || ""} 
-              required 
-              className="input-field" 
+          
+          <div>
+            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+              Full Name
+            </label>
+            <input
+              type="text"
+              id="name"
+              name="name"
+              defaultValue={profile?.name || ""}
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-
-          <div className="pt-4 border-t border-white/10 flex justify-end">
-            <button type="submit" className="btn-primary">
-              Save Changes
-            </button>
-          </div>
+          
+          <button
+            type="submit"
+            className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black"
+          >
+            Save Changes
+          </button>
         </form>
       </div>
 
-      <div className="glass-panel p-6 sm:p-8 border-red-500/20">
-        <h2 className="text-xl font-bold mb-2 text-error">Danger Zone</h2>
-        <p className="text-sm text-secondary mb-6">Once you delete your account, there is no going back. Please be certain.</p>
+      <div className="mt-8 glass-panel p-6 sm:p-8 border border-red-200 bg-red-50/50">
+        <h2 className="text-xl font-bold mb-2 text-red-600">Danger Zone</h2>
+        <p className="text-sm text-gray-600 mb-6">Once you delete your account, there is no going back. Please be certain.</p>
         
-        <button disabled className="btn-secondary text-error border-error/50 opacity-50 cursor-not-allowed">
+        <button disabled className="px-4 py-2 bg-white text-red-600 border border-red-200 rounded-md opacity-50 cursor-not-allowed">
           Delete Account
         </button>
       </div>

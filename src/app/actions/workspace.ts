@@ -1,54 +1,67 @@
 'use server'
 
-import { requireAuth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { createClient } from "@/utils/supabase/server";
 import { revalidatePath } from "next/cache";
 import dns from 'node:dns/promises';
-import { CNAME_TARGET } from "@/lib/constants";
+import { CNAME_TARGET, APP_DOMAIN } from "@/lib/constants";
 
 export async function getOrCreateWorkspace() {
-  const userId = await requireAuth();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("Not authenticated");
 
   // 1. Check if workspace exists
-  const workspace = await prisma.workspace.findFirst({
-    where: { ownerId: userId },
-  });
+  const { data: workspace } = await supabase
+    .from('workspaces')
+    .select('*')
+    .eq('owner_id', user.id)
+    .single();
 
   if (workspace) return workspace;
 
   // 2. If not, create a default workspace
-  const newWorkspace = await prisma.workspace.create({
-    data: {
+  const { data: newWorkspace, error } = await supabase
+    .from('workspaces')
+    .insert({
       name: 'My Workspace',
-      ownerId: userId,
-    },
-  });
+      owner_id: user.id,
+    })
+    .select()
+    .single();
 
+  if (error) throw new Error(error.message);
   return newWorkspace;
 }
 
 export async function getWorkspaceDomains(workspaceId: string) {
-  const domains = await prisma.customDomain.findMany({
-    where: { workspaceId },
-  });
-  return domains;
+  const supabase = await createClient();
+  const { data: domains } = await supabase
+    .from('custom_domains')
+    .select('*')
+    .eq('workspace_id', workspaceId);
+  
+  return domains || [];
 }
 
 export async function getWorkspaceLinks(workspaceId: string) {
-  const links = await prisma.shortUrl.findMany({
-    where: { workspaceId },
-    include: {
-      domain: true,
-    },
-    orderBy: {
-      createdAt: 'desc',
-    },
-  });
-  return links;
+  const supabase = await createClient();
+  const { data: links } = await supabase
+    .from('short_urls')
+    .select(`
+      *,
+      domain:custom_domains(*)
+    `)
+    .eq('workspace_id', workspaceId)
+    .order('created_at', { ascending: false });
+  
+  return links || [];
 }
 
 export async function addWorkspaceDomain(formData: FormData) {
-  const userId = await requireAuth();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
   const domain = formData.get('domain') as string;
   if (!domain || domain.trim() === '') {
@@ -66,22 +79,26 @@ export async function addWorkspaceDomain(formData: FormData) {
   const workspace = await getOrCreateWorkspace();
 
   // Check if domain is already claimed by ANY user (enforce global uniqueness)
-  const existingDomain = await prisma.customDomain.findUnique({
-    where: { domain: cleanDomain }
-  });
+  const { data: existingDomain } = await supabase
+    .from('custom_domains')
+    .select('*')
+    .eq('domain', cleanDomain)
+    .single();
 
   if (existingDomain) {
     throw new Error("Domain is already claimed");
   }
 
   // Create the domain with pending status
-  await prisma.customDomain.create({
-    data: {
+  const { error } = await supabase
+    .from('custom_domains')
+    .insert({
       domain: cleanDomain,
       status: 'pending', // Assume DNS verification is pending
-      workspaceId: workspace.id,
-    }
-  });
+      workspace_id: workspace.id,
+    });
+
+  if (error) throw new Error(error.message);
 
   revalidatePath('/dashboard/domains');
   revalidatePath('/dashboard');
@@ -89,7 +106,9 @@ export async function addWorkspaceDomain(formData: FormData) {
 }
 
 export async function deleteWorkspaceDomain(formData: FormData) {
-  const userId = await requireAuth();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
   const domainId = formData.get('domainId') as string;
   if (!domainId) throw new Error("Domain ID is required");
@@ -97,18 +116,23 @@ export async function deleteWorkspaceDomain(formData: FormData) {
   const workspace = await getOrCreateWorkspace();
 
   // Verify ownership
-  const domain = await prisma.customDomain.findUnique({
-    where: { id: domainId }
-  });
+  const { data: domain } = await supabase
+    .from('custom_domains')
+    .select('*')
+    .eq('id', domainId)
+    .single();
 
-  if (!domain || domain.workspaceId !== workspace.id) {
+  if (!domain || domain.workspace_id !== workspace.id) {
     throw new Error("Domain not found or unauthorized");
   }
 
   // Delete domain
-  await prisma.customDomain.delete({
-    where: { id: domainId }
-  });
+  const { error } = await supabase
+    .from('custom_domains')
+    .delete()
+    .eq('id', domainId);
+
+  if (error) throw new Error(error.message);
 
   revalidatePath('/dashboard/domains');
   revalidatePath('/dashboard');
@@ -116,15 +140,19 @@ export async function deleteWorkspaceDomain(formData: FormData) {
 }
 
 export async function verifyWorkspaceDomain(domainId: string) {
-  const userId = await requireAuth();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
 
   const workspace = await getOrCreateWorkspace();
 
-  const domain = await prisma.customDomain.findUnique({
-    where: { id: domainId }
-  });
+  const { data: domain } = await supabase
+    .from('custom_domains')
+    .select('*')
+    .eq('id', domainId)
+    .single();
 
-  if (!domain || domain.workspaceId !== workspace.id) {
+  if (!domain || domain.workspace_id !== workspace.id) {
     throw new Error("Domain not found or unauthorized");
   }
 
@@ -149,7 +177,19 @@ export async function verifyWorkspaceDomain(domainId: string) {
       // Check CNAME records
       try {
         const records = await dns.resolveCname(domain.domain);
-        if (records.includes(CNAME_TARGET) || records.includes(CNAME_TARGET + '.')) {
+        // Real-world validation: check if it points to our main domain, cname subdomain, or specified target
+        const validTargets = [
+          CNAME_TARGET,
+          CNAME_TARGET + '.',
+          APP_DOMAIN,
+          APP_DOMAIN + '.',
+          `cname.${APP_DOMAIN}`,
+          `cname.${APP_DOMAIN}.`
+        ];
+
+        const isMatch = records.some(record => validTargets.includes(record));
+
+        if (isMatch) {
           isValid = true;
         } else {
           errorMessage = "CNAME points to the wrong target";
@@ -164,18 +204,20 @@ export async function verifyWorkspaceDomain(domainId: string) {
     }
 
     if (isValid) {
-      await prisma.customDomain.update({
-        where: { id: domainId },
-        data: { status: 'active' }
-      });
+      await supabase
+        .from('custom_domains')
+        .update({ status: 'active' })
+        .eq('id', domainId);
+
       revalidatePath('/dashboard/domains');
       revalidatePath('/dashboard');
       return { success: true, message: "Valid Configuration" };
     } else {
-      await prisma.customDomain.update({
-        where: { id: domainId },
-        data: { status: 'pending' } 
-      });
+      await supabase
+        .from('custom_domains')
+        .update({ status: 'pending' })
+        .eq('id', domainId);
+
       revalidatePath('/dashboard/domains');
       return { success: false, error: errorMessage };
     }
