@@ -1,5 +1,6 @@
 import { createClient } from "@/utils/supabase/server";
 import { redirect } from "next/navigation";
+import { LinkActions } from "./LinkActions";
 import { getOrCreateWorkspace, getWorkspaceDomains, getWorkspaceLinks } from "../actions/workspace";
 import { createShortLink } from "../actions/link";
 import { APP_DOMAIN } from "@/lib/constants";
@@ -73,7 +74,7 @@ export default async function DashboardPage() {
             <tbody>
               {links.map((link) => {
                 const domainName = link.domain ? link.domain.domain : APP_DOMAIN;
-                const fullShortUrl = `${domainName}/${link.short_code}`;
+                const fullShortUrl = `https://${domainName}/${link.short_code}`;
                 
                 return (
                   <tr key={link.id}>
@@ -81,8 +82,8 @@ export default async function DashboardPage() {
                       {link.original_url}
                     </td>
                     <td data-label="Short Link">
-                      <a href={`https://${fullShortUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', fontWeight: '500', textDecoration: 'none' }}>
-                        {fullShortUrl}
+                      <a href={fullShortUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', fontWeight: '500', textDecoration: 'none' }}>
+                        {domainName}/{link.short_code}
                       </a>
                     </td>
                     <td data-label="Clicks" style={{ textAlign: 'center' }}>
@@ -91,8 +92,7 @@ export default async function DashboardPage() {
                       </span>
                     </td>
                     <td data-label="Actions" className="text-right">
-                      <button className="btn-text-action" style={{ marginRight: '1.5rem' }}>Copy</button>
-                      <button className="text-error" style={{ fontWeight: '500' }}>Delete</button>
+                      <LinkActions linkId={link.id} fullShortUrl={fullShortUrl} />
                     </td>
                   </tr>
                 );

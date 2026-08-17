@@ -45,3 +45,22 @@ export async function createShortLink(formData: FormData) {
 
   revalidatePath('/dashboard');
 }
+
+export async function deleteShortLink(linkId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const workspace = await getOrCreateWorkspace();
+
+  const { error } = await supabase
+    .from('short_urls')
+    .delete()
+    .eq('id', linkId)
+    .eq('workspace_id', workspace.id);
+
+  if (error) throw new Error(error.message);
+
+  revalidatePath('/dashboard');
+}
+
