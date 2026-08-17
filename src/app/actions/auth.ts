@@ -131,7 +131,7 @@ export async function signIn(prevState: any, formData: FormData) {
     const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user) {
-      return { error: "Invalid email or password" };
+      redirect(`/sign-up?email=${encodeURIComponent(emailInput)}&notice=No+account+found.+Please+create+an+account+first.`);
     }
 
     const passwordValid = await bcrypt.compare(password, user.passwordHash);

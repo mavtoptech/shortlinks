@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { signUp } from "@/app/actions/auth";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
@@ -45,7 +46,11 @@ const iconStyle: React.CSSProperties = {
   pointerEvents: "none",
 };
 
-export default function SignUpPage() {
+function SignUpForm() {
+  const searchParams = useSearchParams();
+  const defaultEmail = searchParams?.get("email") || "";
+  const notice = searchParams?.get("notice") || "";
+
   const [state, formAction, isPending] = useActionState(signUp as any, { error: "" });
   const [showPassword, setShowPassword] = useState(false);
 
@@ -84,6 +89,12 @@ export default function SignUpPage() {
             Enter your details to get started with ShortLinks.
           </p>
 
+          {notice && (
+            <div style={{ background: "#eff6ff", color: "#1d4ed8", padding: "12px 16px", borderRadius: "12px", fontSize: "14px", textAlign: "center", border: "1px solid #bfdbfe", marginBottom: "16px" }}>
+              {notice}
+            </div>
+          )}
+
           <form action={formAction} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
 
             {/* Full Name */}
@@ -99,7 +110,7 @@ export default function SignUpPage() {
               <svg style={iconStyle} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
-              <input id="email" type="email" name="email" required placeholder="Email address" style={inputStyle} />
+              <input id="email" type="email" name="email" defaultValue={defaultEmail} required placeholder="Email address" style={inputStyle} />
             </div>
 
             {/* Password */}
@@ -121,7 +132,7 @@ export default function SignUpPage() {
               </button>
             </div>
 
-            <p style={{ fontSize: "12px", color: "#94a3b8", margin: "0 0 4px 4px" }}>Must be at least 8 characters</p>
+            <p style={{ fontSize: "12px", color: "#94a3b8", margin: "0 0 4px 4px" }}>Must be at least 6 characters</p>
 
             {state?.error && (
               <div style={{ background: "#fef2f2", color: "#dc2626", padding: "12px 16px", borderRadius: "12px", fontSize: "14px", textAlign: "center", border: "1px solid #fee2e2" }}>
@@ -144,5 +155,13 @@ export default function SignUpPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SignUpPage() {
+  return (
+    <Suspense fallback={<div />}>
+      <SignUpForm />
+    </Suspense>
   );
 }
