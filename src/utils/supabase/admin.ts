@@ -3,12 +3,13 @@ import { createClient } from "@supabase/supabase-js";
 // Ensure this client is ONLY imported and used in Server Actions / Server Components
 // Never expose SUPABASE_SERVICE_ROLE_KEY to the browser context.
 
-if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-  throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL environment variable");
-}
-
 export function createAdminClient() {
+  const supabaseUrl = process.env.SUPABASE_INTERNAL_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl) {
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL environment variable");
+  }
 
   if (!serviceRoleKey) {
     console.warn(
@@ -17,7 +18,7 @@ export function createAdminClient() {
   }
 
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    supabaseUrl,
     serviceRoleKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       auth: {
@@ -27,3 +28,4 @@ export function createAdminClient() {
     }
   );
 }
+

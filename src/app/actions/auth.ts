@@ -56,10 +56,11 @@ export async function signUp(prevState: any, formData: FormData) {
       return { error: emailResult.error || "Failed to send confirmation email" };
     }
   } catch (err: any) {
+    console.error("[Auth Error - signUp]", err);
     if (err instanceof z.ZodError) {
       return { error: err.issues?.[0]?.message || err.message };
     }
-    return { error: "An unexpected error occurred" };
+    return { error: err?.message || "An unexpected error occurred" };
   }
 
   // Redirect user to email verification page with encoded email parameter
@@ -85,10 +86,11 @@ export async function verifyOtpAction(prevState: any, formData: FormData) {
       return { error: error.message };
     }
   } catch (err: any) {
+    console.error("[Auth Error - verifyOtpAction]", err);
     if (err instanceof z.ZodError) {
       return { error: err.issues?.[0]?.message || err.message };
     }
-    return { error: "An unexpected error occurred" };
+    return { error: err?.message || "An unexpected error occurred" };
   }
 
   redirect("/dashboard");
@@ -128,10 +130,11 @@ export async function resendOtpAction(prevState: any, formData: FormData) {
 
     return { success: true, message: "A new 6-digit confirmation code has been sent to your email." };
   } catch (err: any) {
+    console.error("[Auth Error - resendOtpAction]", err);
     if (err instanceof z.ZodError) {
       return { error: err.issues?.[0]?.message || err.message };
     }
-    return { error: "An unexpected error occurred" };
+    return { error: err?.message || "An unexpected error occurred" };
   }
 }
 
@@ -191,10 +194,11 @@ export async function signIn(prevState: any, formData: FormData) {
       } catch (_) {}
     }
   } catch (err: any) {
+    console.error("[Auth Error - signIn]", err);
     if (err instanceof z.ZodError) {
       return { error: err.issues?.[0]?.message || err.message };
     }
-    return { error: "An unexpected error occurred" };
+    return { error: err?.message || "An unexpected error occurred" };
   }
 
   if (shouldRedirectToVerify) {
@@ -246,10 +250,11 @@ export async function sendPasswordReset(prevState: any, formData: FormData) {
       message: "If an account with this email exists, we have sent a 6-digit confirmation code to your inbox.",
     };
   } catch (err: any) {
+    console.error("[Auth Error - sendPasswordReset]", err);
     if (err instanceof z.ZodError) {
       return { error: err.issues?.[0]?.message || err.message };
     }
-    return { error: "An unexpected error occurred" };
+    return { error: err?.message || "An unexpected error occurred" };
   }
 }
 
