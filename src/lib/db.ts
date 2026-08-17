@@ -1,14 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 import net from "node:net";
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-  initialized?: boolean;
-  resolvedDbUrl?: string;
-};
-
 const DEFAULT_DB_PASS = "yGDAmEITo1SsVHKS9JtwcWbkxAmdU9MR";
-const DEFAULT_DB_URL = process.env.DATABASE_URL || `postgresql://postgres:${DEFAULT_DB_PASS}@supabase-db:5432/postgres?schema=public`;
+const DEFAULT_DB_URL =
+  process.env.DATABASE_URL ||
+  `postgresql://postgres:${DEFAULT_DB_PASS}@supabase-db:5432/postgres?schema=public`;
 
 // Candidate hostnames inside Coolify Docker network
 const CANDIDATE_HOSTS = [
@@ -21,8 +17,7 @@ const CANDIDATE_HOSTS = [
   "127.0.0.1",
 ];
 
-// Fast TCP probe to find reachable DB host (< 50ms)
-function probeHost(host: string, port = 5432, timeoutMs = 400): Promise<boolean> {
+function probeHost(host: string, port = 5432, timeoutMs = 300): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = net.createConnection({ host, port, timeout: timeoutMs });
     socket.on("connect", () => {
@@ -40,67 +35,67 @@ function probeHost(host: string, port = 5432, timeoutMs = 400): Promise<boolean>
   });
 }
 
-let clientPromise: Promise<PrismaClient> | null = null;
+// Store the actual raw PrismaClient instances separately from any global proxy
+let rawClientInstance: PrismaClient | null = null;
+let isDiscovering = false;
 
-async function getOrInitPrisma(): Promise<PrismaClient> {
-  if (globalForPrisma.prisma) return globalForPrisma.prisma;
-
-  let activeUrl = DEFAULT_DB_URL;
-
-  // In production / container environment, discover working host
-  for (const host of CANDIDATE_HOSTS) {
-    try {
-      const isReachable = await probeHost(host, 5432, 300);
-      if (isReachable) {
-        console.log(`[db] Found reachable PostgreSQL host: ${host}`);
-        activeUrl = `postgresql://postgres:${DEFAULT_DB_PASS}@${host}:5432/postgres?schema=public`;
-        break;
-      }
-    } catch {
-      // Continue to next candidate
-    }
-  }
-
-  globalForPrisma.resolvedDbUrl = activeUrl;
-  globalForPrisma.prisma = new PrismaClient({
-    datasources: {
-      db: {
-        url: activeUrl,
-      },
-    },
+function createClientForUrl(url: string): PrismaClient {
+  return new PrismaClient({
+    datasources: { db: { url } },
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
-
-  return globalForPrisma.prisma;
 }
 
-// Proxy export so all callers (prisma.user, prisma.shortUrl, etc.) use the active client
+function getRawClient(): PrismaClient {
+  if (!rawClientInstance) {
+    rawClientInstance = createClientForUrl(DEFAULT_DB_URL);
+    // Asynchronously discover better host if in container
+    if (!isDiscovering) {
+      isDiscovering = true;
+      discoverAndSwapHost().catch(() => {});
+    }
+  }
+  return rawClientInstance;
+}
+
+async function discoverAndSwapHost() {
+  for (const host of CANDIDATE_HOSTS) {
+    try {
+      const ok = await probeHost(host, 5432, 250);
+      if (ok) {
+        const foundUrl = `postgresql://postgres:${DEFAULT_DB_PASS}@${host}:5432/postgres?schema=public`;
+        if (rawClientInstance) {
+          await rawClientInstance.$disconnect().catch(() => {});
+        }
+        rawClientInstance = createClientForUrl(foundUrl);
+        console.log(`[db] Connected to PostgreSQL host: ${host}`);
+        break;
+      }
+    } catch {}
+  }
+}
+
+// Proxy that delegates directly to the underlying raw client instance (NO recursion)
 export const prisma = new Proxy({} as PrismaClient, {
   get(_target, prop) {
-    if (!globalForPrisma.prisma) {
-      // Synchronous fallback client while probe resolves
-      globalForPrisma.prisma = new PrismaClient({
-        datasources: { db: { url: globalForPrisma.resolvedDbUrl || DEFAULT_DB_URL } },
-        log: ["error"],
-      });
-    }
-    const val = (globalForPrisma.prisma as any)[prop];
-    return typeof val === "function" ? val.bind(globalForPrisma.prisma) : val;
+    const client = getRawClient();
+    const val = (client as any)[prop];
+    return typeof val === "function" ? val.bind(client) : val;
   },
 });
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
-
 let initPromise: Promise<void> | null = null;
+let initialized = false;
 
 // Auto-initialize tables on startup if they don't exist
 export async function ensureTables() {
-  if (globalForPrisma.initialized) return;
+  if (initialized) return;
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-    // Ensure active client with working host
-    const client = await getOrInitPrisma();
+    // Wait for host discovery first
+    await discoverAndSwapHost();
+    const client = getRawClient();
 
     const queries = [
       `CREATE TABLE IF NOT EXISTS users (
@@ -154,7 +149,7 @@ export async function ensureTables() {
         console.error("[db] Error executing table statement:", e);
       }
     }
-    globalForPrisma.initialized = true;
+    initialized = true;
   })();
 
   return initPromise;
