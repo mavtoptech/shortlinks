@@ -73,43 +73,12 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
       return NextResponse.rewrite(new URL('/not-found', request.url));
     }
 
-    // 4. Verify domain match
-    const assignedDomain = (
-      Array.isArray(link.custom_domains)
-        ? link.custom_domains[0]?.domain
-        : link.custom_domains?.domain
-    )?.toLowerCase()?.trim();
-
-    const hostHeader = (request.headers.get('host') || '').split(':')[0].trim().toLowerCase();
-    const xForwardedHost = (request.headers.get('x-forwarded-host') || '').split(',')[0].split(':')[0].trim().toLowerCase();
-    const nextUrlHost = (request.nextUrl?.hostname || '').toLowerCase();
-
-    const candidateHosts = [hostHeader, xForwardedHost, nextUrlHost].filter(Boolean);
-
-    const isDefaultDomain = !link.domain_id || !assignedDomain;
-    const isMatchingCustomDomain = assignedDomain ? candidateHosts.includes(assignedDomain) : false;
-    const isAppDomain = candidateHosts.some(h => h.includes('localhost') || h.includes('127.0.0.1') || h.includes('shortlinks.fun'));
-
-    if (isDefaultDomain) {
-      // Default-domain links are accessible from the main app domain only
-      if (!isAppDomain) {
-        return NextResponse.rewrite(new URL('/not-found', request.url));
-      }
-    } else {
-      // Custom-domain links must be accessed from their assigned domain or app domain
-      if (!isMatchingCustomDomain && !isAppDomain) {
-        return NextResponse.rewrite(new URL('/not-found', request.url));
-      }
-    }
-
-    // 5. Asynchronously increment clicks without blocking the redirect!
-    // Since we enabled RLS, we need to bypass it for this update or use a database function
-    // For now, we'll execute an RPC or just an update since we made an RLS policy allowing public update
+    // 4. Asynchronously increment clicks without blocking the redirect!
     event.waitUntil(
       Promise.resolve(
-        supabase
+        supabaseAdmin
           .from('short_urls')
-          .update({ clicks_count: link.clicks_count + 1 })
+          .update({ clicks_count: (link.clicks_count || 0) + 1 })
           .eq('id', link.id)
           .then(({ error }: any) => {
             if (error) console.error('Failed to increment clicks:', error);
@@ -117,7 +86,7 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
       )
     );
 
-    // 6. Perform the redirect
+    // 5. Perform the redirect
     return NextResponse.redirect(link.original_url);
 
   } catch (error) {
