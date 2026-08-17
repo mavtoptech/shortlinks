@@ -16,7 +16,7 @@ export async function getOrCreateWorkspace() {
     .from('workspaces')
     .select('*')
     .eq('owner_id', user.id)
-    .single();
+    .maybeSingle();
 
   if (workspace) return workspace;
 

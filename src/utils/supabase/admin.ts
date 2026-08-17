@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 // Never expose SUPABASE_SERVICE_ROLE_KEY to the browser context.
 
 export function createAdminClient() {
-  const supabaseUrl = process.env.SUPABASE_INTERNAL_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl) {
