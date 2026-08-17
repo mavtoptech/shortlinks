@@ -52,6 +52,24 @@ async function updateFqdn(domains: string[]): Promise<void> {
     const body = await res.text();
     throw new Error(`Failed to update Coolify FQDN: ${res.status} ${body}`);
   }
+
+  // Trigger a redeployment/restart to apply the new Traefik labels
+  console.log('[SSL] Triggering Coolify deployment to apply new FQDNs...');
+  const deployRes = await fetch(`${COOLIFY_URL}/api/v1/applications/${COOLIFY_APP_UUID}/start`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${COOLIFY_API_TOKEN}`,
+      Accept: 'application/json',
+    },
+  });
+
+  if (!deployRes.ok) {
+    console.error(`[SSL] Failed to trigger deployment: ${deployRes.status} ${await deployRes.text()}`);
+    // We don't throw here because the FQDN update was successful,
+    // the user might just have to wait or trigger it manually later.
+  } else {
+    console.log('[SSL] Deployment triggered successfully.');
+  }
 }
 
 /**
