@@ -6,8 +6,10 @@ export async function updateSession(request: NextRequest) {
     request,
   })
 
+  const supabaseUrl = process.env.SUPABASE_INTERNAL_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    supabaseUrl,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
@@ -45,8 +47,8 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  // Redirect authenticated users away from sign-in/sign-up
-  if (pathname.startsWith('/sign-in') || pathname.startsWith('/sign-up')) {
+  // Redirect authenticated users away from sign-in/sign-up (GET requests only)
+  if (request.method === 'GET' && (pathname.startsWith('/sign-in') || pathname.startsWith('/sign-up'))) {
     if (user) {
       return { response: NextResponse.redirect(new URL('/dashboard', request.url)) }
     }

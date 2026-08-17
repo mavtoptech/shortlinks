@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "serverUrl": "https://supabase.mavtop.in/mcp"
+    }
+  }
+}
