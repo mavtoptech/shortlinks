@@ -69,8 +69,10 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
       .single();
 
     if (error || !link) {
-      // Short link not found, let it fall through to a 404 page
-      return NextResponse.rewrite(new URL('/not-found', request.url));
+      const res = NextResponse.rewrite(new URL('/not-found', request.url));
+      res.headers.set('x-debug-error', JSON.stringify(error || 'link-null'));
+      res.headers.set('x-debug-slug', slug);
+      return res;
     }
 
     // 4. Asynchronously increment clicks without blocking the redirect!
@@ -87,10 +89,14 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
     );
 
     // 5. Perform the redirect
-    return NextResponse.redirect(link.original_url);
+    const redirectRes = NextResponse.redirect(link.original_url);
+    redirectRes.headers.set('x-debug-found', link.short_code);
+    return redirectRes;
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Proxy DB Error:", error);
-    return response;
+    const errRes = NextResponse.rewrite(new URL('/not-found', request.url));
+    errRes.headers.set('x-debug-exception', error?.message || String(error));
+    return errRes;
   }
 }
