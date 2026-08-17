@@ -12,35 +12,53 @@ export async function getOrCreateWorkspace() {
   const session = await getSessionUser();
   if (!session) throw new Error("Not authenticated");
 
-  // 1. Check if workspace exists
-  const workspace = await prisma.workspace.findFirst({
-    where: { ownerId: session.userId },
-  });
+  try {
+    const workspace = await prisma.workspace.findFirst({
+      where: { ownerId: session.userId },
+    });
 
-  if (workspace) return workspace;
+    if (workspace) return workspace;
 
-  // 2. If not, create a default workspace
-  return prisma.workspace.create({
-    data: {
+    return await prisma.workspace.create({
+      data: {
+        name: 'My Workspace',
+        ownerId: session.userId,
+      },
+    });
+  } catch (err) {
+    console.error("[workspace] Error in getOrCreateWorkspace:", err);
+    return {
+      id: `ws_${session.userId}`,
       name: 'My Workspace',
       ownerId: session.userId,
-    },
-  });
+      createdAt: new Date(),
+    };
+  }
 }
 
 export async function getWorkspaceDomains(workspaceId: string) {
-  return prisma.customDomain.findMany({
-    where: { workspaceId },
-    orderBy: { createdAt: 'desc' },
-  });
+  try {
+    return await prisma.customDomain.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: 'desc' },
+    });
+  } catch (err) {
+    console.error("[workspace] Error fetching domains:", err);
+    return [];
+  }
 }
 
 export async function getWorkspaceLinks(workspaceId: string) {
-  return prisma.shortUrl.findMany({
-    where: { workspaceId },
-    include: { customDomain: true },
-    orderBy: { createdAt: 'desc' },
-  });
+  try {
+    return await prisma.shortUrl.findMany({
+      where: { workspaceId },
+      include: { customDomain: true },
+      orderBy: { createdAt: 'desc' },
+    });
+  } catch (err) {
+    console.error("[workspace] Error fetching links:", err);
+    return [];
+  }
 }
 
 export async function addWorkspaceDomain(formData: FormData) {
