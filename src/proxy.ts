@@ -72,6 +72,9 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
       const res = NextResponse.rewrite(new URL('/not-found', request.url));
       res.headers.set('x-debug-error', JSON.stringify(error || 'link-null'));
       res.headers.set('x-debug-slug', slug);
+      res.headers.set('x-debug-url', process.env.NEXT_PUBLIC_SUPABASE_URL || 'FALLBACK_USED');
+      const key = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+      res.headers.set('x-debug-key-prefix', key ? key.slice(0, 35) + '...' : 'EMPTY_KEY');
       return res;
     }
 
