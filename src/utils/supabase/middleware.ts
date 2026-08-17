@@ -21,7 +21,7 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({
             request,
           })
@@ -37,9 +37,15 @@ export async function updateSession(request: NextRequest) {
   // supabase.auth.getUser(). A simple mistake could make it very hard to debug
   // issues with users being randomly logged out.
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser()
+    user = data?.user ?? null;
+  } catch (err) {
+    // If Kong returns a non-JSON response (e.g. "Unauthorized" plain text),
+    // @supabase/ssr will throw a JSON parse error. Treat this as unauthenticated.
+    user = null;
+  }
 
   const url = request.nextUrl
   const pathname = url.pathname

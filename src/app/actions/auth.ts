@@ -1,16 +1,20 @@
 "use server";
 
-import { createClient } from "@/utils/supabase/server";
 import { createAdminClient } from "@/utils/supabase/admin";
 import { sendOtpEmail } from "@/lib/email";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { createClient as createSupabaseJsClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
 
 // Zod schemas for input validation and security checks
 const emailSchema = z.string().email("Invalid email address").max(255, "Email is too long");
 const passwordSchema = z.string().min(6, "Password must be at least 6 characters").max(72, "Password is too long");
 const nameSchema = z.string().min(2, "Name must be at least 2 characters").max(100, "Name is too long");
 const otpSchema = z.string().length(6, "Confirmation code must be 6 digits");
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://supabase.mavtop.in";
+const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4NjcyMzIwMCwiZXhwIjo0OTQyMzk2ODAwLCJyb2xlIjoiYW5vbiJ9.T9LfvS85FJi8_cK-e6WXgRP_yVOZUmrwawJEGVCH8Xk";
 
 export async function signUp(prevState: any, formData: FormData) {
   const emailInput = formData.get("email") as string;
@@ -75,8 +79,12 @@ export async function verifyOtpAction(prevState: any, formData: FormData) {
     const email = emailSchema.parse(emailInput);
     const code = otpSchema.parse(codeInput);
 
-    const supabase = await createClient();
-    const { error } = await supabase.auth.verifyOtp({
+    // Use a clean isolated client — no cookie inheritance
+    const cleanClient = createSupabaseJsClient(SUPABASE_URL, ANON_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const { data, error } = await cleanClient.auth.verifyOtp({
       email,
       token: code,
       type: "signup",
@@ -84,6 +92,38 @@ export async function verifyOtpAction(prevState: any, formData: FormData) {
 
     if (error) {
       return { error: error.message };
+    }
+
+    // Set session cookies manually so the user is logged in after verifying
+    if (data?.session) {
+      const cookieStore = await cookies();
+      const sessionJson = JSON.stringify({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_at: data.session.expires_at,
+      });
+      cookieStore.set("sb-session", sessionJson, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7,
+      });
+      // Also set the standard Supabase SSR cookies
+      cookieStore.set("sb-access-token", data.session.access_token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60,
+      });
+      cookieStore.set("sb-refresh-token", data.session.refresh_token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7,
+      });
     }
   } catch (err: any) {
     console.error("[Auth Error - verifyOtpAction]", err);
@@ -147,12 +187,9 @@ export async function signIn(prevState: any, formData: FormData) {
     const email = emailSchema.parse(emailInput);
     const password = passwordSchema.parse(passwordInput);
 
-    // 1. Authenticate with a clean Supabase JS client so stale browser cookies don't trigger 401 Unauthorized at Kong proxy
-    const { createClient: createSupabaseJsClient } = await import("@supabase/supabase-js");
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://supabase.mavtop.in";
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4NjcyMzIwMCwiZXhwIjo0OTQyMzk2ODAwLCJyb2xlIjoiYW5vbiJ9.T9LfvS85FJi8_cK-e6WXgRP_yVOZUmrwawJEGVCH8Xk";
-
-    const cleanAuthClient = createSupabaseJsClient(supabaseUrl, anonKey, {
+    // Use a completely isolated Supabase JS client with no cookie inheritance
+    // This avoids stale browser cookies causing 401 at Kong API Gateway
+    const cleanAuthClient = createSupabaseJsClient(SUPABASE_URL, ANON_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
@@ -201,9 +238,26 @@ export async function signIn(prevState: any, formData: FormData) {
           }
         } catch (_) {}
       } else {
-        // 2. Set the authenticated session cookies in Next.js Server Client
-        const serverSupabase = await createClient();
-        await serverSupabase.auth.setSession({
+        // Write session cookies directly without using createServerClient
+        // This avoids any risk of the server client triggering 401 at Kong
+        const cookieStore = await cookies();
+        const { createServerClient } = await import("@supabase/ssr");
+        const serverClient = createServerClient(SUPABASE_URL, ANON_KEY, {
+          cookies: {
+            getAll() {
+              return cookieStore.getAll();
+            },
+            setAll(cookiesToSet) {
+              try {
+                cookiesToSet.forEach(({ name, value, options }) =>
+                  cookieStore.set(name, value, options)
+                );
+              } catch {}
+            },
+          },
+        });
+
+        await serverClient.auth.setSession({
           access_token: data.session.access_token,
           refresh_token: data.session.refresh_token,
         });
@@ -225,8 +279,23 @@ export async function signIn(prevState: any, formData: FormData) {
 }
 
 export async function signOut() {
-  const supabase = await createClient();
-  await supabase.auth.signOut();
+  const cookieStore = await cookies();
+  const { createServerClient } = await import("@supabase/ssr");
+  const serverClient = createServerClient(SUPABASE_URL, ANON_KEY, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options)
+          );
+        } catch {}
+      },
+    },
+  });
+  await serverClient.auth.signOut();
   redirect("/sign-in");
 }
 
@@ -282,8 +351,12 @@ export async function verifyResetCodeAction(prevState: any, formData: FormData) 
     const email = emailSchema.parse(emailInput);
     const code = otpSchema.parse(codeInput);
 
-    const supabase = await createClient();
-    const { error } = await supabase.auth.verifyOtp({
+    // Use isolated client for OTP verification
+    const cleanClient = createSupabaseJsClient(SUPABASE_URL, ANON_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const { error } = await cleanClient.auth.verifyOtp({
       email,
       token: code,
       type: "recovery",
@@ -307,7 +380,22 @@ export async function updatePasswordAction(prevState: any, formData: FormData) {
 
   try {
     const password = passwordSchema.parse(passwordInput);
-    const supabase = await createClient();
+    const cookieStore = await cookies();
+    const { createServerClient } = await import("@supabase/ssr");
+    const supabase = createServerClient(SUPABASE_URL, ANON_KEY, {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
+          } catch {}
+        },
+      },
+    });
 
     const { error } = await supabase.auth.updateUser({
       password: password,
