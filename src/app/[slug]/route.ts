@@ -63,8 +63,8 @@ export async function GET(
 
   for (const candidate of candidates) {
     for (const [keyName, keyVal] of [['ANON', ANON_KEY], ['SERVICE', SERVICE_KEY]]) {
-      const res = await fetchUrl(candidate.url, keyVal, candidate.host);
-      const shortName = candidate.url.replace('/rest/v1/short_urls?short_code=eq.' + encodeURIComponent(slug) + '&select=*', '');
+      const res = await fetchUrl(candidate.url, keyVal);
+      const shortName = candidate.url.replace(queryPath, '');
       attemptsLog.push(`${shortName}(${keyName}):${res.status}`);
 
       if (res.status === 200) {
