@@ -20,28 +20,37 @@ export async function GET(
   let debugStatus = 0;
   let debugText = '';
 
-  try {
-    const url = `${SUPABASE_URL}/rest/v1/short_urls?short_code=eq.${encodeURIComponent(slug)}&select=*`;
-    const res = await fetch(url, {
-      headers: {
-        'apikey': SERVICE_KEY,
-        'Authorization': `Bearer ${SERVICE_KEY}`,
-        'Accept': 'application/json',
-      },
-      cache: 'no-store',
-    });
+  const url = `${SUPABASE_URL}/rest/v1/short_urls?short_code=eq.${encodeURIComponent(slug)}&select=*`;
+  const cleanHeaders = {
+    'Accept': 'application/json',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  };
 
-    debugStatus = res.status;
-    debugText = await res.text();
+  for (const [keyName, keyVal] of [['SERVICE', SERVICE_KEY], ['ANON', ANON_KEY]]) {
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          ...cleanHeaders,
+          'apikey': keyVal,
+          'Authorization': `Bearer ${keyVal}`,
+        },
+        cache: 'no-store',
+      });
 
-    if (res.ok) {
-      const links = JSON.parse(debugText);
-      if (Array.isArray(links) && links.length > 0 && links[0].original_url) {
-        matchedLink = links[0];
+      debugStatus = res.status;
+      debugText = await res.text();
+
+      if (res.ok) {
+        const links = JSON.parse(debugText);
+        if (Array.isArray(links) && links.length > 0 && links[0].original_url) {
+          matchedLink = links[0];
+          break;
+        }
       }
+    } catch (err: any) {
+      debugText = err?.message || String(err);
     }
-  } catch (err: any) {
-    debugText = err?.message || String(err);
   }
 
   if (matchedLink && matchedLink.original_url) {
@@ -49,6 +58,7 @@ export async function GET(
     fetch(`${SUPABASE_URL}/rest/v1/short_urls?id=eq.${matchedLink.id}`, {
       method: 'PATCH',
       headers: {
+        ...cleanHeaders,
         'apikey': SERVICE_KEY,
         'Authorization': `Bearer ${SERVICE_KEY}`,
         'Content-Type': 'application/json',
@@ -64,7 +74,6 @@ export async function GET(
   const res = NextResponse.redirect(`https://${APP_DOMAIN}/not-found`, 307);
   res.headers.set('x-debug-url', SUPABASE_URL);
   res.headers.set('x-debug-status', String(debugStatus));
-  res.headers.set('x-debug-key-len', String(SERVICE_KEY.length));
   res.headers.set('x-debug-text', debugText.slice(0, 100));
   return res;
 }
