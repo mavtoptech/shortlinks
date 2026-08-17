@@ -21,9 +21,9 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
   }
 
   const url = request.nextUrl;
-  // Strip port from hostname so 'link.callwaves.in:3000' matches 'link.callwaves.in'
-  const rawHostname = request.headers.get('host') || '';
-  const hostname = rawHostname.split(':')[0];
+  // Extract domain from x-forwarded-host or host header, stripping ports and commas
+  const rawHostname = request.headers.get('x-forwarded-host') || request.headers.get('host') || '';
+  const hostname = rawHostname.split(',')[0].split(':')[0].trim();
   const pathname = url.pathname;
 
   // 1. Skip system routes for link resolution
