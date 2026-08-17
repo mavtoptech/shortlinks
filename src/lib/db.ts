@@ -155,4 +155,3 @@ export async function ensureTables() {
   return initPromise;
 }
 
-ensureTables().catch(() => {});
