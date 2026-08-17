@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import { prisma } from "@/lib/db";
+import { prisma, ensureTables } from "@/lib/db";
 import { generateOtp, saveOtp, verifyOtp } from "@/lib/auth/otp";
 import { sendOtpEmail } from "@/lib/email";
 import {
@@ -19,6 +19,7 @@ const nameSchema = z.string().min(2, "Name must be at least 2 characters").max(1
 const otpSchema = z.string().length(6, "Confirmation code must be 6 digits");
 
 export async function signUp(prevState: any, formData: FormData) {
+  await ensureTables();
   const emailInput = formData.get("email") as string;
   const passwordInput = formData.get("password") as string;
   const nameInput = formData.get("name") as string;
@@ -66,6 +67,7 @@ export async function signUp(prevState: any, formData: FormData) {
 }
 
 export async function verifyOtpAction(prevState: any, formData: FormData) {
+  await ensureTables();
   const emailInput = formData.get("email") as string;
   const codeInput = formData.get("code") as string;
 
@@ -95,6 +97,7 @@ export async function verifyOtpAction(prevState: any, formData: FormData) {
 }
 
 export async function resendOtpAction(prevState: any, formData: FormData) {
+  await ensureTables();
   const emailInput = formData.get("email") as string;
 
   try {
@@ -117,6 +120,7 @@ export async function resendOtpAction(prevState: any, formData: FormData) {
 }
 
 export async function signIn(prevState: any, formData: FormData) {
+  await ensureTables();
   const emailInput = formData.get("email") as string;
   const passwordInput = formData.get("password") as string;
 
@@ -161,6 +165,7 @@ export async function signOut() {
 }
 
 export async function sendPasswordReset(prevState: any, formData: FormData) {
+  await ensureTables();
   const emailInput = formData.get("email") as string;
   const successResponse = {
     success: true,

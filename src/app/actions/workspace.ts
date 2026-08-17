@@ -4,10 +4,11 @@ import { revalidatePath } from "next/cache";
 import dns from 'node:dns/promises';
 import { CNAME_TARGET, APP_DOMAIN } from "@/lib/constants";
 import { registerDomainForSSL, unregisterDomainFromSSL } from "@/lib/coolify";
-import { prisma } from "@/lib/db";
+import { prisma, ensureTables } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth/session";
 
 export async function getOrCreateWorkspace() {
+  await ensureTables();
   const session = await getSessionUser();
   if (!session) throw new Error("Not authenticated");
 
