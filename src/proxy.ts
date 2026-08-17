@@ -37,6 +37,10 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
 
   // 2. If it's a potential short link (e.g. /YeJlnQ), attempt direct link resolution BEFORE auth session overhead
   if (!isSystemRoute && slug && !slug.includes('/')) {
+    let lastStatus = 0;
+    let lastError = '';
+    let linksFound = 0;
+
     try {
       const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4NjcyMzIwMCwiZXhwIjo0OTQyMzk2ODAwLCJyb2xlIjoiYW5vbiJ9.T9LfvS85FJi8_cK-e6WXgRP_yVOZUmrwawJEGVCH8Xk';
       const serviceKey = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4NjcyMzIwMCwiZXhwIjo0OTQyMzk2ODAwLCJyb2xlIjoic2VydmljZV9yb2xlIn0.26RM4vH8xM7vdkwc2A_aI79kOvmyhPoZbRHzcHs_fY0';
@@ -52,7 +56,10 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
         cache: 'no-store',
       });
 
+      lastStatus = dbRes.status;
+
       if (!dbRes.ok) {
+        lastError = await dbRes.text();
         // Fallback to SERVICE_KEY
         dbRes = await fetch(`${supabaseUrl}/rest/v1/short_urls?short_code=eq.${encodeURIComponent(slug)}&select=*,custom_domains(domain)`, {
           headers: {
@@ -62,10 +69,12 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
           },
           cache: 'no-store',
         });
+        lastStatus = dbRes.status;
       }
 
       if (dbRes.ok) {
         const links = await dbRes.json();
+        linksFound = Array.isArray(links) ? links.length : 0;
         const link = Array.isArray(links) ? links[0] : null;
 
         if (link && link.original_url) {
@@ -86,13 +95,21 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
           // Perform immediate redirect
           return NextResponse.redirect(link.original_url);
         }
+      } else {
+        lastError = await dbRes.text();
       }
     } catch (error: any) {
       console.error("Proxy Shortlink Error:", error);
+      lastError = error?.message || String(error);
     }
 
-    // If shortlink was not found, return 404
-    return NextResponse.rewrite(new URL('/not-found', request.url));
+    // If shortlink was not found, return 404 with diagnostic headers
+    const res = NextResponse.rewrite(new URL('/not-found', request.url));
+    res.headers.set('x-debug-slug', slug);
+    res.headers.set('x-debug-status', String(lastStatus));
+    res.headers.set('x-debug-links-count', String(linksFound));
+    res.headers.set('x-debug-err', lastError.slice(0, 100));
+    return res;
   }
 
   // 3. For system/app routes, update auth session
