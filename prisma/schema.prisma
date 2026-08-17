@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,11 +10,11 @@ datasource db {
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
-  passwordHash  String
+  passwordHash  String    @map("password_hash")
   name          String?
-  emailVerified Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  emailVerified Boolean   @default(false) @map("email_verified")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   workspaces    Workspace[]
   otpCodes      OtpCode[]
@@ -28,8 +25,8 @@ model User {
 model Workspace {
   id        String   @id @default(cuid())
   name      String
-  ownerId   String
-  createdAt DateTime @default(now())
+  ownerId   String   @map("owner_id")
+  createdAt DateTime @default(now()) @map("created_at")
 
   owner         User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   shortUrls     ShortUrl[]
@@ -40,12 +37,12 @@ model Workspace {
 
 model ShortUrl {
   id          String   @id @default(cuid())
-  originalUrl String
-  shortCode   String   @unique
-  clicksCount Int      @default(0)
-  workspaceId String
-  domainId    String?
-  createdAt   DateTime @default(now())
+  originalUrl String   @map("original_url")
+  shortCode   String   @unique @map("short_code")
+  clicksCount Int      @default(0) @map("clicks_count")
+  workspaceId String   @map("workspace_id")
+  domainId    String?  @map("domain_id")
+  createdAt   DateTime @default(now()) @map("created_at")
 
   workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   customDomain CustomDomain? @relation(fields: [domainId], references: [id], onDelete: SetNull)
@@ -57,8 +54,8 @@ model CustomDomain {
   id          String   @id @default(cuid())
   domain      String   @unique
   status      String   @default("pending")
-  workspaceId String
-  createdAt   DateTime @default(now())
+  workspaceId String   @map("workspace_id")
+  createdAt   DateTime @default(now()) @map("created_at")
 
   workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   shortUrls  ShortUrl[]
@@ -71,10 +68,10 @@ model OtpCode {
   email     String
   code      String
   type      String   // "signup" | "recovery"
-  expiresAt DateTime
+  expiresAt DateTime @map("expires_at")
   used      Boolean  @default(false)
-  userId    String?
-  createdAt DateTime @default(now())
+  userId    String?  @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
 
   user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 

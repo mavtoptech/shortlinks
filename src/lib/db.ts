@@ -86,7 +86,7 @@ export const prisma = new Proxy({} as PrismaClient, {
 let initPromise: Promise<void> | null = null;
 let initialized = false;
 
-// Auto-initialize tables on startup if they don't exist
+// Auto-initialize and migrate tables on startup
 export async function ensureTables() {
   if (initialized) return;
   if (initPromise) return initPromise;
@@ -98,46 +98,69 @@ export async function ensureTables() {
     const client = getRawClient();
 
     const queries = [
+      // Users table
       `CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         email TEXT UNIQUE NOT NULL,
-        "passwordHash" TEXT NOT NULL,
+        password_hash TEXT,
         name TEXT,
-        "emailVerified" BOOLEAN DEFAULT FALSE,
-        "createdAt" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP,
-        "updatedAt" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP
+        email_verified BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP
       )`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP`,
+
+      // Workspaces table
       `CREATE TABLE IF NOT EXISTS workspaces (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
-        "ownerId" TEXT NOT NULL,
-        "createdAt" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP
+        owner_id TEXT NOT NULL,
+        created_at TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP
       )`,
+      `ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS owner_id TEXT`,
+      `ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS created_at TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP`,
+
+      // Custom domains table
       `CREATE TABLE IF NOT EXISTS custom_domains (
         id TEXT PRIMARY KEY,
         domain TEXT UNIQUE NOT NULL,
         status TEXT DEFAULT 'pending',
-        "workspaceId" TEXT NOT NULL,
-        "createdAt" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP
+        workspace_id TEXT NOT NULL,
+        created_at TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP
       )`,
+      `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS workspace_id TEXT`,
+      `ALTER TABLE custom_domains ADD COLUMN IF NOT EXISTS created_at TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP`,
+
+      // Short URLs table
       `CREATE TABLE IF NOT EXISTS short_urls (
         id TEXT PRIMARY KEY,
-        "originalUrl" TEXT NOT NULL,
-        "shortCode" TEXT UNIQUE NOT NULL,
-        "clicksCount" INTEGER DEFAULT 0,
-        "workspaceId" TEXT NOT NULL,
-        "domainId" TEXT,
-        "createdAt" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP
+        original_url TEXT NOT NULL,
+        short_code TEXT UNIQUE NOT NULL,
+        clicks_count INTEGER DEFAULT 0,
+        workspace_id TEXT NOT NULL,
+        domain_id TEXT,
+        created_at TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP
       )`,
+      `ALTER TABLE short_urls ADD COLUMN IF NOT EXISTS original_url TEXT`,
+      `ALTER TABLE short_urls ADD COLUMN IF NOT EXISTS short_code TEXT`,
+      `ALTER TABLE short_urls ADD COLUMN IF NOT EXISTS clicks_count INTEGER DEFAULT 0`,
+      `ALTER TABLE short_urls ADD COLUMN IF NOT EXISTS workspace_id TEXT`,
+      `ALTER TABLE short_urls ADD COLUMN IF NOT EXISTS domain_id TEXT`,
+      `ALTER TABLE short_urls ADD COLUMN IF NOT EXISTS created_at TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP`,
+
+      // OTP codes table
       `CREATE TABLE IF NOT EXISTS otp_codes (
         id TEXT PRIMARY KEY,
         email TEXT NOT NULL,
         code TEXT NOT NULL,
         type TEXT NOT NULL,
-        "expiresAt" TIMESTAMP(3) NOT NULL,
+        expires_at TIMESTAMP(3) NOT NULL,
         used BOOLEAN DEFAULT FALSE,
-        "userId" TEXT,
-        "createdAt" TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP
+        user_id TEXT,
+        created_at TIMESTAMP(3) DEFAULT CURRENT_TIMESTAMP
       )`,
       `CREATE INDEX IF NOT EXISTS "otp_codes_email_type_idx" ON otp_codes(email, type)`
     ];
@@ -146,7 +169,7 @@ export async function ensureTables() {
       try {
         await client.$executeRawUnsafe(q);
       } catch (e) {
-        console.error("[db] Error executing table statement:", e);
+        console.error("[db] Error executing table/migration statement:", e);
       }
     }
     initialized = true;
@@ -154,4 +177,3 @@ export async function ensureTables() {
 
   return initPromise;
 }
-
