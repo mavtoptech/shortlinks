@@ -4,23 +4,27 @@ import { NextResponse } from "next/server";
  * ZeptoMail Webhook Handler Route
  * Endpoint: POST /api/webhooks/zeptomail
  *
- * Handles real-time email delivery events from ZeptoMail by Zoho:
+ * Handles real-time email delivery & bounce events from ZeptoMail by Zoho:
  * - delivered
  * - softbounce
  * - hardbounce
  * - feedback_loop
  *
- * Must ALWAYS return HTTP 200 status as required by ZeptoMail.
+ * Requirements: Must ALWAYS return HTTP 200 status as required by ZeptoMail.
  */
 export async function POST(request: Request) {
   try {
-    // Optional Authorization header check
-    const authHeader = request.headers.get("authorization");
+    // Optional Authorization header verification
+    const authHeader =
+      request.headers.get("authorization") ||
+      request.headers.get("x-zeptomail-token") ||
+      request.headers.get("x-authorization");
+
     const webhookSecret = process.env.ZEPTOMAIL_WEBHOOK_SECRET;
 
     if (webhookSecret && authHeader && authHeader !== webhookSecret) {
-      console.warn("[ZeptoMail Webhook] Unauthorized webhook attempt.");
-      // Note: ZeptoMail requires HTTP 200, so we return 200 with an error status in payload if secret fails
+      console.warn("[ZeptoMail Webhook] Unauthorized webhook signature attempt.");
+      // ZeptoMail requires HTTP 200 response
       return NextResponse.json(
         { status: "error", message: "Unauthorized token" },
         { status: 200 }
@@ -29,34 +33,50 @@ export async function POST(request: Request) {
 
     const payload = await request.json();
 
-    // ZeptoMail webhook structure extract
+    // ZeptoMail payload structure extraction
     const eventNameArray = payload?.event_name || [];
     const eventName = Array.isArray(eventNameArray) ? eventNameArray[0] : eventNameArray;
     const eventMessages = payload?.event_message || [];
 
-    console.log(`[ZeptoMail Webhook] Received Event: "${eventName}"`);
+    console.log(`[ZeptoMail Webhook] Event Received: "${eventName}"`);
 
     if (Array.isArray(eventMessages)) {
       for (const msg of eventMessages) {
         const emailInfo = msg?.email_info || {};
-        const recipient = emailInfo?.to?.[0]?.email_address?.address || emailInfo?.to?.[0]?.address || "unknown";
-        const subject = msg?.subject || emailInfo?.subject || "N/A";
+        const subject = emailInfo?.subject || msg?.subject || "N/A";
+        
+        // Extract recipients
+        const toRecipients = (emailInfo?.to || [])
+          .map((item: any) => item?.email_address?.address || item?.address)
+          .filter(Boolean);
+        const recipientList = toRecipients.length > 0 ? toRecipients.join(", ") : "Unknown recipient";
+
+        // Extract bounce details if present
+        const eventDataList = msg?.event_data || [];
+        const firstDetail = eventDataList?.[0]?.details?.[0] || {};
+        const bouncedRecipient = firstDetail?.bounced_recipient || recipientList;
+        const reason = firstDetail?.reason || "N/A";
+        const diagnosticMessage = firstDetail?.diagnostic_message || "N/A";
 
         switch (eventName) {
           case "delivered":
-            console.log(`[ZeptoMail Webhook] ✅ Email DELIVERED to ${recipient} (Subject: "${subject}")`);
+            console.log(`[ZeptoMail Webhook] ✅ DELIVERED to ${recipientList} (Subject: "${subject}")`);
             break;
           case "hardbounce":
-            console.error(`[ZeptoMail Webhook] ❌ HARD BOUNCE for ${recipient} (Subject: "${subject}"). Reason:`, msg?.bounce_reason || "Unknown");
+            console.error(
+              `[ZeptoMail Webhook] ❌ HARD BOUNCE for ${bouncedRecipient} (Reason: ${reason}, Diagnostic: ${diagnosticMessage})`
+            );
             break;
           case "softbounce":
-            console.warn(`[ZeptoMail Webhook] ⚠️ SOFT BOUNCE for ${recipient} (Subject: "${subject}"). Reason:`, msg?.bounce_reason || "Unknown");
+            console.warn(
+              `[ZeptoMail Webhook] ⚠️ SOFT BOUNCE for ${bouncedRecipient} (Reason: ${reason}, Diagnostic: ${diagnosticMessage})`
+            );
             break;
           case "feedback_loop":
-            console.warn(`[ZeptoMail Webhook] 🛑 COMPLAINT / FEEDBACK LOOP for ${recipient}`);
+            console.warn(`[ZeptoMail Webhook] 🛑 FEEDBACK LOOP / COMPLAINT for ${bouncedRecipient}`);
             break;
           default:
-            console.log(`[ZeptoMail Webhook] Event "${eventName}" for recipient ${recipient}`);
+            console.log(`[ZeptoMail Webhook] Event "${eventName}" logged for ${recipientList}`);
             break;
         }
       }
@@ -70,7 +90,7 @@ export async function POST(request: Request) {
   }
 }
 
-// Allow OPTIONS preflight for webhook verification
+// Support OPTIONS preflight request for ZeptoMail validation
 export async function OPTIONS() {
   return NextResponse.json({ status: "ok" }, { status: 200 });
 }
