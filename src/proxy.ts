@@ -21,7 +21,9 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
   }
 
   const url = request.nextUrl;
-  const hostname = request.headers.get('host') || '';
+  // Strip port from hostname so 'link.callwaves.in:3000' matches 'link.callwaves.in'
+  const rawHostname = request.headers.get('host') || '';
+  const hostname = rawHostname.split(':')[0];
   const pathname = url.pathname;
 
   // 1. Skip system routes for link resolution
@@ -70,14 +72,21 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
 
     // 4. Verify domain match
     const isDefaultDomain = !link.domain_id;
+    // Custom domain match: compare clean hostname (no port) with stored domain
     const isMatchingCustomDomain = link.custom_domains && link.custom_domains.domain === hostname;
-    
-    // We'll be lenient for local testing on localhost, but in production we'd strictly enforce domain matching
-    const isLocalhost = hostname.includes('localhost') || hostname.includes('192.168');
-    
-    if (!isDefaultDomain && !isMatchingCustomDomain && !isLocalhost) {
-      // The short link exists, but it belongs to a different custom domain!
-      return NextResponse.rewrite(new URL('/not-found', request.url));
+    // Links without a custom domain can be accessed via the main app domain or localhost
+    const isAppDomain = hostname.includes('localhost') || hostname.includes('127.0.0.1') || hostname.includes('shortlinks.fun');
+
+    if (isDefaultDomain) {
+      // Default-domain links are accessible from the main app domain only
+      if (!isAppDomain) {
+        return NextResponse.rewrite(new URL('/not-found', request.url));
+      }
+    } else {
+      // Custom-domain links must be accessed from their assigned domain
+      if (!isMatchingCustomDomain && !isAppDomain) {
+        return NextResponse.rewrite(new URL('/not-found', request.url));
+      }
     }
 
     // 5. Asynchronously increment clicks without blocking the redirect!
