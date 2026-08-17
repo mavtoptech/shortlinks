@@ -147,9 +147,16 @@ export async function signIn(prevState: any, formData: FormData) {
     const email = emailSchema.parse(emailInput);
     const password = passwordSchema.parse(passwordInput);
 
-    const supabase = await createClient();
+    // 1. Authenticate with a clean Supabase JS client so stale browser cookies don't trigger 401 Unauthorized at Kong proxy
+    const { createClient: createSupabaseJsClient } = await import("@supabase/supabase-js");
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://supabase.mavtop.in";
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4NjcyMzIwMCwiZXhwIjo0OTQyMzk2ODAwLCJyb2xlIjoiYW5vbiJ9.T9LfvS85FJi8_cK-e6WXgRP_yVOZUmrwawJEGVCH8Xk";
 
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const cleanAuthClient = createSupabaseJsClient(supabaseUrl, anonKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const { data, error } = await cleanAuthClient.auth.signInWithPassword({
       email,
       password,
     });
@@ -178,20 +185,29 @@ export async function signIn(prevState: any, formData: FormData) {
       } else {
         return { error: error.message };
       }
-    } else if (data?.user && !data.user.email_confirmed_at) {
-      shouldRedirectToVerify = true;
-      try {
-        const supabaseAdmin = createAdminClient();
-        const linkRes = await supabaseAdmin.auth.admin.generateLink({
-          type: "signup",
-          email,
-          password,
+    } else if (data?.session) {
+      if (!data.user.email_confirmed_at) {
+        shouldRedirectToVerify = true;
+        try {
+          const supabaseAdmin = createAdminClient();
+          const linkRes = await supabaseAdmin.auth.admin.generateLink({
+            type: "signup",
+            email,
+            password,
+          });
+          const emailOtp = linkRes.data?.properties?.email_otp;
+          if (emailOtp) {
+            await sendOtpEmail({ to: email, otp: emailOtp, type: "signup" });
+          }
+        } catch (_) {}
+      } else {
+        // 2. Set the authenticated session cookies in Next.js Server Client
+        const serverSupabase = await createClient();
+        await serverSupabase.auth.setSession({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
         });
-        const emailOtp = linkRes.data?.properties?.email_otp;
-        if (emailOtp) {
-          await sendOtpEmail({ to: email, otp: emailOtp, type: "signup" });
-        }
-      } catch (_) {}
+      }
     }
   } catch (err: any) {
     console.error("[Auth Error - signIn]", err);

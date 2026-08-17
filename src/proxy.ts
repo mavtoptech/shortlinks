@@ -55,40 +55,48 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
   }
 
   try {
-    // 3. Find the URL in the database using admin client to bypass RLS restrictions on custom_domains table for anonymous visitors
-    const supabaseAdmin = createAdminClient();
-    const { data: link, error } = await supabaseAdmin
-      .from('short_urls')
-      .select(`
-        *,
-        custom_domains (
-          domain
-        )
-      `)
-      .eq('short_code', slug)
-      .single();
+    const serviceKey = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4NjcyMzIwMCwiZXhwIjo0OTQyMzk2ODAwLCJyb2xlIjoic2VydmljZV9yb2xlIn0.26RM4vH8xM7vdkwc2A_aI79kOvmyhPoZbRHzcHs_fY0';
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://supabase.mavtop.in';
 
-    if (error || !link) {
+    const dbRes = await fetch(`${supabaseUrl}/rest/v1/short_urls?short_code=eq.${encodeURIComponent(slug)}&select=*,custom_domains(domain)`, {
+      headers: {
+        'apikey': serviceKey,
+        'Authorization': `Bearer ${serviceKey}`,
+        'Accept': 'application/json',
+      },
+      cache: 'no-store',
+    });
+
+    if (!dbRes.ok) {
+      const errText = await dbRes.text();
       const res = NextResponse.rewrite(new URL('/not-found', request.url));
-      res.headers.set('x-debug-error', JSON.stringify(error || 'link-null'));
+      res.headers.set('x-debug-error', `HTTP ${dbRes.status}: ${errText}`);
       res.headers.set('x-debug-slug', slug);
-      res.headers.set('x-debug-url', process.env.NEXT_PUBLIC_SUPABASE_URL || 'FALLBACK_USED');
-      const key = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-      res.headers.set('x-debug-key-prefix', key ? key.slice(0, 35) + '...' : 'EMPTY_KEY');
+      return res;
+    }
+
+    const links = await dbRes.json();
+    const link = Array.isArray(links) ? links[0] : null;
+
+    if (!link || !link.original_url) {
+      const res = NextResponse.rewrite(new URL('/not-found', request.url));
+      res.headers.set('x-debug-error', 'link-not-found');
+      res.headers.set('x-debug-slug', slug);
       return res;
     }
 
     // 4. Asynchronously increment clicks without blocking the redirect!
     event.waitUntil(
-      Promise.resolve(
-        supabaseAdmin
-          .from('short_urls')
-          .update({ clicks_count: (link.clicks_count || 0) + 1 })
-          .eq('id', link.id)
-          .then(({ error }: any) => {
-            if (error) console.error('Failed to increment clicks:', error);
-          })
-      )
+      fetch(`${supabaseUrl}/rest/v1/short_urls?id=eq.${link.id}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': serviceKey,
+          'Authorization': `Bearer ${serviceKey}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal',
+        },
+        body: JSON.stringify({ clicks_count: (link.clicks_count || 0) + 1 }),
+      }).catch((e) => console.error('Click count increment failed:', e))
     );
 
     // 5. Perform the redirect
