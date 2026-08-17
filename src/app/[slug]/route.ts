@@ -9,16 +9,18 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
-  const { slug } = await params;
+  const resolvedParams = await params;
+  const slug = resolvedParams?.slug;
 
   if (!slug || slug.includes('.')) {
     return NextResponse.redirect(`https://${APP_DOMAIN}/not-found`, 307);
   }
 
   let matchedLink = null;
+  let dbStatus = 0;
+  let dbErrText = '';
 
   try {
-    // 1. Fetch shortlink from PostgREST querying select=* (bypassing custom_domains RLS restriction)
     let dbRes = await fetch(`${SUPABASE_URL}/rest/v1/short_urls?short_code=eq.${encodeURIComponent(slug)}&select=*`, {
       headers: {
         'apikey': ANON_KEY,
@@ -28,7 +30,10 @@ export async function GET(
       cache: 'no-store',
     });
 
+    dbStatus = dbRes.status;
+
     if (!dbRes.ok) {
+      dbErrText = await dbRes.text();
       dbRes = await fetch(`${SUPABASE_URL}/rest/v1/short_urls?short_code=eq.${encodeURIComponent(slug)}&select=*`, {
         headers: {
           'apikey': SERVICE_KEY,
@@ -37,16 +42,21 @@ export async function GET(
         },
         cache: 'no-store',
       });
+      dbStatus = dbRes.status;
     }
 
     if (dbRes.ok) {
       const links = await dbRes.json();
       if (Array.isArray(links) && links.length > 0 && links[0].original_url) {
         matchedLink = links[0];
+      } else {
+        dbErrText = `links_empty_count_${Array.isArray(links) ? links.length : -1}`;
       }
+    } else {
+      dbErrText = await dbRes.text();
     }
-  } catch (err) {
-    console.error('[Route Handler Shortlink Error]', err);
+  } catch (err: any) {
+    dbErrText = err?.message || String(err);
   }
 
   if (matchedLink && matchedLink.original_url) {
@@ -66,5 +76,9 @@ export async function GET(
     return NextResponse.redirect(matchedLink.original_url, 307);
   }
 
-  return NextResponse.redirect(`https://${APP_DOMAIN}/not-found`, 307);
+  const res = NextResponse.redirect(`https://${APP_DOMAIN}/not-found`, 307);
+  res.headers.set('x-debug-slug', slug || 'EMPTY');
+  res.headers.set('x-debug-status', String(dbStatus));
+  res.headers.set('x-debug-err', dbErrText.slice(0, 100));
+  return res;
 }
