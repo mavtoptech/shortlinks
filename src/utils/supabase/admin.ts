@@ -18,6 +18,18 @@ export function createAdminClient() {
         autoRefreshToken: false,
         persistSession: false,
       },
+      global: {
+        fetch: (url, options) => {
+          return fetch(url, {
+            ...options,
+            headers: {
+              ...options?.headers,
+              apikey: serviceRoleKey,
+              Authorization: `Bearer ${serviceRoleKey}`,
+            },
+          });
+        },
+      },
     }
   );
 }
