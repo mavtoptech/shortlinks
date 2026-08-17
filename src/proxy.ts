@@ -55,17 +55,31 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
   }
 
   try {
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4NjcyMzIwMCwiZXhwIjo0OTQyMzk2ODAwLCJyb2xlIjoiYW5vbiJ9.T9LfvS85FJi8_cK-e6WXgRP_yVOZUmrwawJEGVCH8Xk';
     const serviceKey = process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4NjcyMzIwMCwiZXhwIjo0OTQyMzk2ODAwLCJyb2xlIjoic2VydmljZV9yb2xlIn0.26RM4vH8xM7vdkwc2A_aI79kOvmyhPoZbRHzcHs_fY0';
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://supabase.mavtop.in';
 
-    const dbRes = await fetch(`${supabaseUrl}/rest/v1/short_urls?short_code=eq.${encodeURIComponent(slug)}&select=*,custom_domains(domain)`, {
+    // 3. Query short_urls using ANON_KEY first (short_urls table has public read access)
+    let dbRes = await fetch(`${supabaseUrl}/rest/v1/short_urls?short_code=eq.${encodeURIComponent(slug)}&select=*,custom_domains(domain)`, {
       headers: {
-        'apikey': serviceKey,
-        'Authorization': `Bearer ${serviceKey}`,
+        'apikey': anonKey,
+        'Authorization': `Bearer ${anonKey}`,
         'Accept': 'application/json',
       },
       cache: 'no-store',
     });
+
+    if (!dbRes.ok) {
+      // Fallback to SERVICE_KEY
+      dbRes = await fetch(`${supabaseUrl}/rest/v1/short_urls?short_code=eq.${encodeURIComponent(slug)}&select=*,custom_domains(domain)`, {
+        headers: {
+          'apikey': serviceKey,
+          'Authorization': `Bearer ${serviceKey}`,
+          'Accept': 'application/json',
+        },
+        cache: 'no-store',
+      });
+    }
 
     if (!dbRes.ok) {
       const errText = await dbRes.text();
@@ -90,8 +104,8 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
       fetch(`${supabaseUrl}/rest/v1/short_urls?id=eq.${link.id}`, {
         method: 'PATCH',
         headers: {
-          'apikey': serviceKey,
-          'Authorization': `Bearer ${serviceKey}`,
+          'apikey': anonKey,
+          'Authorization': `Bearer ${anonKey}`,
           'Content-Type': 'application/json',
           'Prefer': 'return=minimal',
         },
