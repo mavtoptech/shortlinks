@@ -6,18 +6,18 @@ const DEFAULT_DB_URL =
   process.env.DATABASE_URL ||
   `postgresql://postgres:${DEFAULT_DB_PASS}@supabase-db:5432/postgres?schema=public`;
 
-// Candidate hostnames inside Coolify Docker network
+const isDev = process.env.NODE_ENV === "development";
+
+// Candidate hostnames inside Coolify Docker network (only used in production containers)
 const CANDIDATE_HOSTS = [
   "2l4llui824evqnplabkdpx9k",
   "supabase-db-yword0jwkztgpiaha6g8ddou",
   "supabase-db-2l4llui824evqnplabkdpx9k",
   "supabase-db",
   "yword0jwkztgpiaha6g8ddou-supabase-db",
-  "localhost",
-  "127.0.0.1",
 ];
 
-function probeHost(host: string, port = 5432, timeoutMs = 300): Promise<boolean> {
+function probeHost(host: string, port = 5432, timeoutMs = 250): Promise<boolean> {
   return new Promise((resolve) => {
     const socket = net.createConnection({ host, port, timeout: timeoutMs });
     socket.on("connect", () => {
@@ -35,22 +35,20 @@ function probeHost(host: string, port = 5432, timeoutMs = 300): Promise<boolean>
   });
 }
 
-// Store the actual raw PrismaClient instances separately from any global proxy
 let rawClientInstance: PrismaClient | null = null;
 let isDiscovering = false;
 
 function createClientForUrl(url: string): PrismaClient {
   return new PrismaClient({
     datasources: { db: { url } },
-    log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+    log: isDev ? ["error", "warn"] : ["error"],
   });
 }
 
 function getRawClient(): PrismaClient {
   if (!rawClientInstance) {
     rawClientInstance = createClientForUrl(DEFAULT_DB_URL);
-    // Asynchronously discover better host if in container
-    if (!isDiscovering) {
+    if (!isDev && !isDiscovering) {
       isDiscovering = true;
       discoverAndSwapHost().catch(() => {});
     }
@@ -59,9 +57,10 @@ function getRawClient(): PrismaClient {
 }
 
 async function discoverAndSwapHost() {
+  if (isDev) return;
   for (const host of CANDIDATE_HOSTS) {
     try {
-      const ok = await probeHost(host, 5432, 250);
+      const ok = await probeHost(host, 5432, 200);
       if (ok) {
         const foundUrl = `postgresql://postgres:${DEFAULT_DB_PASS}@${host}:5432/postgres?schema=public`;
         if (rawClientInstance) {
@@ -75,7 +74,7 @@ async function discoverAndSwapHost() {
   }
 }
 
-// Proxy that delegates directly to the underlying raw client instance (NO recursion)
+// Proxy that delegates directly to the underlying raw client instance
 export const prisma = new Proxy({} as PrismaClient, {
   get(_target, prop) {
     const client = getRawClient();
@@ -93,8 +92,9 @@ export async function ensureTables() {
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-    // Wait for host discovery first
-    await discoverAndSwapHost();
+    if (!isDev) {
+      await discoverAndSwapHost();
+    }
     const client = getRawClient();
 
     const queries = [
@@ -155,5 +155,4 @@ export async function ensureTables() {
   return initPromise;
 }
 
-// Kick off immediately on module load
 ensureTables().catch(() => {});
