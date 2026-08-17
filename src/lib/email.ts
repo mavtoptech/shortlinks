@@ -6,9 +6,10 @@ import path from "path";
 const SMTP_HOST = process.env.ZEPTOMAIL_SMTP_HOST || process.env.SMTP_HOST || "smtp.zeptomail.in";
 const SMTP_PORT = parseInt(process.env.ZEPTOMAIL_SMTP_PORT || process.env.SMTP_PORT || "465", 10);
 const SMTP_USER = process.env.ZEPTOMAIL_SMTP_USER || process.env.SMTP_USER || "emailkey";
-const SMTP_PASS = process.env.ZEPTOMAIL_SMTP_PASSWORD || process.env.SMTP_PASS || "";
-const FROM_EMAIL = process.env.ZEPTOMAIL_FROM_EMAIL || process.env.SMTP_FROM || "noreply@shortlinks.fun";
+const SMTP_PASS = process.env.ZEPTOMAIL_SMTP_PASS || process.env.ZEPTOMAIL_SMTP_PASSWORD || process.env.SMTP_PASS || "";
+const FROM_EMAIL = process.env.ZEPTOMAIL_FROM_ADDRESS || process.env.ZEPTOMAIL_FROM_EMAIL || process.env.SMTP_FROM || "noreply@shortlinks.fun";
 const FROM_NAME = process.env.ZEPTOMAIL_FROM_NAME || "ShortLinks";
+
 
 // Create reusable Nodemailer transporter instance
 const transporter = nodemailer.createTransport({
