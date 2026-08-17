@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Confirm Your Email</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: #f9fafb;
+      margin: 0;
+      padding: 0;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 40px auto;
+      background-color: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      overflow: hidden;
+    }
+
+    .header {
+      background-color: #2563eb;
+      padding: 30px 20px;
+      text-align: center;
+    }
+
+    .header h1 {
+      color: #ffffff;
+      margin: 0;
+      font-size: 24px;
+    }
+
+    .content {
+      padding: 40px 30px;
+      text-align: center;
+    }
+
+    .content p {
+      color: #374151;
+      font-size: 16px;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+
+    .otp-box {
+      background-color: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 30px 0;
+      display: inline-block;
+    }
+
+    .otp-code {
+      font-size: 32px;
+      font-weight: bold;
+      color: #111827;
+      letter-spacing: 4px;
+      margin: 0;
+    }
+
+    .footer {
+      background-color: #f9fafb;
+      padding: 20px;
+      text-align: center;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    .footer p {
+      color: #6b7280;
+      font-size: 14px;
+      margin: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Welcome to ShortLinks</h1>
+    </div>
+    <div class="content">
+      <h2>Confirm your email address</h2>
+      <p>Thank you for signing up! Please use the following 6-digit code to verify your email address and complete your
+        registration.</p>
+
+      <div class="otp-box">
+        <p class="otp-code">{{ .Token }}</p>
+      </div>
+
+      <p>If you didn't request this email, you can safely ignore it.</p>
+    </div>
+    <div class="footer">
+      <p>&copy; 2026 ShortLinks. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+
+</html>

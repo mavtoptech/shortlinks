@@ -183,8 +183,12 @@ GOTRUE_JWT_AUD=authenticated
 GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated
 GOTRUE_JWT_EXP=3600
 GOTRUE_JWT_SECRET=${JWT_SECRET}
-GOTRUE_MAILER_AUTOCONFIRM=true
-GOTRUE_SMS_AUTOCONFIRM=true
+GOTRUE_MAILER_AUTOCONFIRM=false
+GOTRUE_SMS_AUTOCONFIRM=false
+GOTRUE_MAILER_TEMPLATES_CONFIRMATION=/etc/gotrue/templates/confirmation.html
+GOTRUE_MAILER_TEMPLATES_RECOVERY=/etc/gotrue/templates/recovery.html
+GOTRUE_MAILER_TEMPLATES_MAGIC_LINK=/etc/gotrue/templates/magic_link.html
+GOTRUE_MAILER_TEMPLATES_EMAIL_CHANGE=/etc/gotrue/templates/email_change.html
 SMTP_ADMIN_EMAIL=admin@mavtop.in
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
@@ -205,7 +209,7 @@ STUDIO_DEFAULT_ORGANIZATION=Mavtop
 STUDIO_DEFAULT_PROJECT=Mavtop DB
 STUDIO_PORT=3000
 NEXT_PUBLIC_ENABLE_LOGS=true
-KONG_HTTP_PORT=8000
+KONG_HTTP_PORT=8001
 KONG_HTTPS_PORT=8443
 ENVEOF
 
@@ -234,22 +238,27 @@ header "STEP 10: Configuring Nginx"
 cat > /etc/nginx/sites-available/supabase << 'NGINXEOF'
 server {
     listen 80;
-    server_name data.mavtop.in;
+    server_name supabase.mavtop.in data.mavtop.in;
 
     client_max_body_size 100M;
 
-    # Supabase Studio dashboard
-    location /studio {
-        proxy_pass http://localhost:3000;
+    # Certbot ACME challenge
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    # Supabase Studio Dashboard for browser access
+    location / {
+        proxy_pass http://127.0.0.1:3000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # All API traffic → Kong gateway
-    location / {
-        proxy_pass http://localhost:8000;
+    # Supabase API services -> Kong Gateway (Port 8001)
+    location ~ ^/(auth|rest|storage|realtime|functions|meta)/ {
+        proxy_pass http://127.0.0.1:8001;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -275,7 +284,7 @@ ln -sf /etc/nginx/sites-available/supabase /etc/nginx/sites-enabled/supabase
 rm -f /etc/nginx/sites-enabled/default
 
 nginx -t && systemctl reload nginx
-log "Nginx configured for ${DOMAIN}"
+log "Nginx configured for supabase.mavtop.in and data.mavtop.in"
 
 # ──────────────────────────────────────────────
 # STEP 11: SSL CERTIFICATE

@@ -30,6 +30,11 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
     pathname.startsWith('/dashboard') ||
     pathname.startsWith('/sign-in') ||
     pathname.startsWith('/sign-up') ||
+    pathname.startsWith('/forgot-password') ||
+    pathname.startsWith('/update-password') ||
+    pathname.startsWith('/verify-email') ||
+    pathname.startsWith('/auth') ||
+    pathname.startsWith('/email') ||
     pathname.startsWith('/api') ||
     pathname.startsWith('/trpc')
   ) {

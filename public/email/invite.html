@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>You've been invited to ShortLinks</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: #f9fafb;
+      margin: 0;
+      padding: 0;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 40px auto;
+      background-color: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      overflow: hidden;
+    }
+
+    .header {
+      background-color: #2563eb;
+      padding: 30px 20px;
+      text-align: center;
+    }
+
+    .header h1 {
+      color: #ffffff;
+      margin: 0;
+      font-size: 24px;
+    }
+
+    .content {
+      padding: 40px 30px;
+      text-align: center;
+    }
+
+    .content p {
+      color: #374151;
+      font-size: 16px;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+
+    .btn {
+      display: inline-block;
+      background-color: #2563eb;
+      color: #ffffff;
+      text-decoration: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-weight: bold;
+      margin-top: 10px;
+    }
+
+    .footer {
+      background-color: #f9fafb;
+      padding: 20px;
+      text-align: center;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    .footer p {
+      color: #6b7280;
+      font-size: 14px;
+      margin: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Welcome to ShortLinks</h1>
+    </div>
+    <div class="content">
+      <h2>You have been invited!</h2>
+      <p>Someone has invited you to join ShortLinks. Click the button below to accept the invitation and set up your
+        account.</p>
+      <a href="{{ .ConfirmationURL }}" class="btn">Accept Invitation</a>
+      <p style="margin-top: 30px; font-size: 14px; color: #9ca3af;">If you prefer, you can also use this confirmation
+        code: <strong>{{ .Token }}</strong></p>
+    </div>
+    <div class="footer">
+      <p>&copy; 2026 ShortLinks. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+
+</html>
