@@ -17,8 +17,11 @@ const otpSchema = z.string().length(6, "Confirmation code must be 6 digits");
 const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || "https://supabase.mavtop.in").trim();
 const ANON_KEY = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4NjcyMzIwMCwiZXhwIjo0OTQyMzk2ODAwLCJyb2xlIjoiYW5vbiJ9.T9LfvS85FJi8_cK-e6WXgRP_yVOZUmrwawJEGVCH8Xk").trim();
 const SERVICE_KEY = (process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4NjcyMzIwMCwiZXhwIjo0OTQyMzk2ODAwLCJyb2xlIjoic2VydmljZV9yb2xlIn0.26RM4vH8xM7vdkwc2A_aI79kOvmyhPoZbRHzcHs_fY0").trim();
+// Internal container URLs bypass Traefik/Kong — used inside the production Docker network
+const INTERNAL_AUTH_URL = (process.env.SUPABASE_INTERNAL_AUTH_URL || SUPABASE_URL + "/auth/v1").trim();
+const INTERNAL_REST_URL = (process.env.SUPABASE_INTERNAL_REST_URL || SUPABASE_URL + "/rest/v1").trim();
 
-// Direct GoTrue token endpoint — bypasses SDK JSON parsing issues entirely
+// Direct GoTrue token endpoint — bypasses SDK JSON parsing issues and Traefik/Kong entirely
 async function signInWithPasswordDirect(email: string, password: string): Promise<{
   access_token?: string;
   refresh_token?: string;
@@ -28,7 +31,8 @@ async function signInWithPasswordDirect(email: string, password: string): Promis
 }> {
   let res: Response;
   try {
-    res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    // INTERNAL_AUTH_URL = "http://supabase-auth:9999" bypasses Traefik/Kong
+    res = await fetch(`${INTERNAL_AUTH_URL}/token?grant_type=password`, {
       method: "POST",
       headers: {
         "apikey": ANON_KEY,

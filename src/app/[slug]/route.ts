@@ -5,6 +5,8 @@ import https from 'node:https';
 const ANON_KEY = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4NjcyMzIwMCwiZXhwIjo0OTQyMzk2ODAwLCJyb2xlIjoiYW5vbiJ9.T9LfvS85FJi8_cK-e6WXgRP_yVOZUmrwawJEGVCH8Xk').trim();
 const SERVICE_KEY = (process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4NjcyMzIwMCwiZXhwIjo0OTQyMzk2ODAwLCJyb2xlIjoic2VydmljZV9yb2xlIn0.26RM4vH8xM7vdkwc2A_aI79kOvmyhPoZbRHzcHs_fY0').trim();
 const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://supabase.mavtop.in').trim();
+// SUPABASE_INTERNAL_REST_URL = "http://supabase-rest:3000" bypasses Traefik/Kong inside Docker
+const INTERNAL_REST_URL = (process.env.SUPABASE_INTERNAL_REST_URL || `${SUPABASE_URL}/rest/v1`).trim();
 const APP_DOMAIN = (process.env.NEXT_PUBLIC_APP_DOMAIN || 'shortlinks.fun').trim();
 
 function fetchUrl(targetUrl: string, key: string, customHost?: string): Promise<{ status: number; body: string }> {
@@ -48,13 +50,12 @@ export async function GET(
     return NextResponse.redirect(`https://${APP_DOMAIN}/not-found`, 307);
   }
 
-  const queryPath = `/rest/v1/short_urls?short_code=eq.${encodeURIComponent(slug)}&select=*`;
+  const queryPath = `/short_urls?short_code=eq.${encodeURIComponent(slug)}&select=*`;
   const candidates = [
-    { url: `${SUPABASE_URL}${queryPath}` },
-    { url: `http://supabase-kong:8000${queryPath}` },
-    { url: `http://kong:8000${queryPath}` },
-    { url: `http://supabase-rest:3000${queryPath}` },
-    { url: `http://172.17.0.1:8000${queryPath}`, host: 'supabase.mavtop.in' },
+    // Internal Docker network URL — bypasses Traefik/Kong entirely
+    { url: `${INTERNAL_REST_URL}${queryPath}` },
+    // Fallback to public URL via Kong gateway
+    { url: `${SUPABASE_URL}/rest/v1${queryPath}` },
   ];
 
   let matchedLink = null;
