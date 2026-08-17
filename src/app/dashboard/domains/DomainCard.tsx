@@ -36,7 +36,9 @@ export function DomainCard({ domain }: { domain: Domain }) {
     }
   }
 
-  const handleCopy = (text: string, field: string) => {
+  const handleCopy = (e: React.MouseEvent, text: string, field: string) => {
+    e.preventDefault();
+    e.stopPropagation();
     navigator.clipboard.writeText(text);
     setCopied(field);
     setTimeout(() => setCopied(null), 2000);
@@ -116,7 +118,7 @@ export function DomainCard({ domain }: { domain: Domain }) {
                     <div className="flex items-center justify-between gap-4">
                       <span style={{ fontFamily: 'monospace', fontWeight: '500', color: 'var(--text-primary)' }}>{cnameName}</span>
                       <button 
-                        onClick={() => handleCopy(cnameName, 'name')}
+                        onClick={(e) => handleCopy(e, cnameName, 'name')}
                         style={{ background: 'rgba(0,130,243,0.1)', color: 'var(--accent-primary)', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600' }}
                       >
                         {copied === 'name' ? 'Copied!' : 'Copy'}
@@ -127,7 +129,7 @@ export function DomainCard({ domain }: { domain: Domain }) {
                     <div className="flex items-center justify-between gap-4">
                       <span style={{ fontFamily: 'monospace', fontWeight: '500', color: 'var(--text-primary)' }}>{CNAME_TARGET}</span>
                       <button 
-                        onClick={() => handleCopy(CNAME_TARGET, 'value')}
+                        onClick={(e) => handleCopy(e, CNAME_TARGET, 'value')}
                         style={{ background: 'rgba(0,130,243,0.1)', color: 'var(--accent-primary)', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600' }}
                       >
                         {copied === 'value' ? 'Copied!' : 'Copy'}

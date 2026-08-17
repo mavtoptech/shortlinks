@@ -12,7 +12,9 @@ export function LinkActions({ linkId, fullShortUrl }: LinkActionsProps) {
   const [copied, setCopied] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const handleCopy = async () => {
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(fullShortUrl);
@@ -35,7 +37,9 @@ export function LinkActions({ linkId, fullShortUrl }: LinkActionsProps) {
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     if (!confirm('Are you sure you want to delete this short link?')) return;
     setDeleting(true);
     try {

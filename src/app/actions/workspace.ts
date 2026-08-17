@@ -4,6 +4,7 @@ import { createClient } from "@/utils/supabase/server";
 import { revalidatePath } from "next/cache";
 import dns from 'node:dns/promises';
 import { CNAME_TARGET, APP_DOMAIN } from "@/lib/constants";
+import { registerDomainForSSL, unregisterDomainFromSSL } from "@/lib/coolify";
 
 export async function getOrCreateWorkspace() {
   const supabase = await createClient();
@@ -126,6 +127,14 @@ export async function deleteWorkspaceDomain(formData: FormData) {
     throw new Error("Domain not found or unauthorized");
   }
 
+  try {
+    // Unregister SSL from Coolify Traefik
+    await unregisterDomainFromSSL(domain.domain);
+  } catch (error) {
+    console.error("Failed to unregister domain from Coolify:", error);
+    // Continue with deletion even if Coolify fails, to avoid leaving zombie records in DB
+  }
+
   // Delete domain
   const { error } = await supabase
     .from('custom_domains')
@@ -204,6 +213,14 @@ export async function verifyWorkspaceDomain(domainId: string) {
     }
 
     if (isValid) {
+      try {
+        // Register domain for SSL provisioning with Traefik via Coolify API
+        await registerDomainForSSL(domain.domain);
+      } catch (sslError) {
+        console.error("Failed to register SSL with Coolify:", sslError);
+        return { success: false, error: "DNS is valid, but failed to provision SSL. Please try again later." };
+      }
+
       await supabase
         .from('custom_domains')
         .update({ status: 'active' })
