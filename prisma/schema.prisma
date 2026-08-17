@@ -1,0 +1,83 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String?
+  emailVerified Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  workspaces    Workspace[]
+  otpCodes      OtpCode[]
+
+  @@map("users")
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String
+  createdAt DateTime @default(now())
+
+  owner         User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  shortUrls     ShortUrl[]
+  customDomains CustomDomain[]
+
+  @@map("workspaces")
+}
+
+model ShortUrl {
+  id          String   @id @default(cuid())
+  originalUrl String
+  shortCode   String   @unique
+  clicksCount Int      @default(0)
+  workspaceId String
+  domainId    String?
+  createdAt   DateTime @default(now())
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  customDomain CustomDomain? @relation(fields: [domainId], references: [id], onDelete: SetNull)
+
+  @@map("short_urls")
+}
+
+model CustomDomain {
+  id          String   @id @default(cuid())
+  domain      String   @unique
+  status      String   @default("pending")
+  workspaceId String
+  createdAt   DateTime @default(now())
+
+  workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  shortUrls  ShortUrl[]
+
+  @@map("custom_domains")
+}
+
+model OtpCode {
+  id        String   @id @default(cuid())
+  email     String
+  code      String
+  type      String   // "signup" | "recovery"
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  userId    String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([email, type])
+  @@map("otp_codes")
+}

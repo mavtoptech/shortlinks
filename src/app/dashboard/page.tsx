@@ -1,25 +1,24 @@
-import { createClient } from "@/utils/supabase/server";
 import { redirect } from "next/navigation";
 import { LinkActions } from "./LinkActions";
 import { getOrCreateWorkspace, getWorkspaceDomains, getWorkspaceLinks } from "../actions/workspace";
 import { createShortLink } from "../actions/link";
 import { APP_DOMAIN } from "@/lib/constants";
+import { getSessionUser } from "@/lib/auth/session";
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/sign-in");
+  const session = await getSessionUser();
+  if (!session) redirect("/sign-in");
 
   const workspace = await getOrCreateWorkspace();
   const domains = await getWorkspaceDomains(workspace.id);
   const links = await getWorkspaceLinks(workspace.id);
 
-  const totalClicks = links.reduce((sum, link) => sum + link.clicks_count, 0);
+  const totalClicks = links.reduce((sum, link) => sum + link.clicksCount, 0);
 
   return (
     <div style={{ maxWidth: '64rem', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '3rem' }}>
       
-      {/* Bitly-Style Hero Quick Shortener */}
+      {/* Quick Shortener */}
       <div className="glass-panel" style={{ padding: '2rem 1.5rem', textAlign: 'center', backgroundColor: '#ffffff' }}>
         <h1 className="text-3xl font-bold mb-3">Shorten a long link</h1>
         <p className="text-secondary text-base mb-6 max-w-xl mx-auto">
@@ -73,22 +72,22 @@ export default async function DashboardPage() {
             </thead>
             <tbody>
               {links.map((link) => {
-                const domainName = link.domain ? link.domain.domain : APP_DOMAIN;
-                const fullShortUrl = `https://${domainName}/${link.short_code}`;
+                const domainName = link.customDomain ? link.customDomain.domain : APP_DOMAIN;
+                const fullShortUrl = `https://${domainName}/${link.shortCode}`;
                 
                 return (
                   <tr key={link.id}>
-                    <td data-label="Original URL" style={{ maxWidth: '300px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={link.original_url}>
-                      {link.original_url}
+                    <td data-label="Original URL" style={{ maxWidth: '300px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={link.originalUrl}>
+                      {link.originalUrl}
                     </td>
                     <td data-label="Short Link">
                       <a href={fullShortUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', fontWeight: '500', textDecoration: 'none' }}>
-                        {domainName}/{link.short_code}
+                        {domainName}/{link.shortCode}
                       </a>
                     </td>
                     <td data-label="Clicks" style={{ textAlign: 'center' }}>
                       <span className="badge" style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}>
-                        {link.clicks_count}
+                        {link.clicksCount}
                       </span>
                     </td>
                     <td data-label="Actions" className="text-right">
