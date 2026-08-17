@@ -6,8 +6,8 @@ const SERVICE_KEY = (process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY || proces
 const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://supabase.mavtop.in').trim();
 const APP_DOMAIN = (process.env.NEXT_PUBLIC_APP_DOMAIN || 'shortlinks.fun').trim();
 
-function fetchShortUrlRaw(slug: string, key: string): Promise<any[]> {
-  return new Promise((resolve, reject) => {
+function fetchShortUrlRaw(slug: string, key: string): Promise<{ status: number; body: string }> {
+  return new Promise((resolve) => {
     const targetUrl = `${SUPABASE_URL}/rest/v1/short_urls?short_code=eq.${encodeURIComponent(slug)}&select=*`;
     const req = https.request(targetUrl, {
       method: 'GET',
@@ -15,25 +15,16 @@ function fetchShortUrlRaw(slug: string, key: string): Promise<any[]> {
         'apikey': key,
         'Authorization': `Bearer ${key}`,
         'Accept': 'application/json',
-        'User-Agent': 'ShortLinksRedirect/1.0',
       },
     }, (res) => {
       let data = '';
       res.on('data', (chunk) => data += chunk);
       res.on('end', () => {
-        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-          try {
-            resolve(JSON.parse(data));
-          } catch (err) {
-            reject(new Error(`JSON Parse Error: ${data}`));
-          }
-        } else {
-          reject(new Error(`HTTP ${res.statusCode}: ${data}`));
-        }
+        resolve({ status: res.statusCode || 0, body: data });
       });
     });
 
-    req.on('error', (err) => reject(err));
+    req.on('error', (err) => resolve({ status: 0, body: err.message }));
     req.end();
   });
 }
@@ -50,22 +41,26 @@ export async function GET(
   }
 
   let matchedLink = null;
-  let debugErrText = '';
 
-  try {
-    // Query using ANON_KEY first
-    let links = await fetchShortUrlRaw(slug, ANON_KEY).catch(async (anonErr) => {
-      debugErrText = `anon_fail(${anonErr.message}) | `;
-      return await fetchShortUrlRaw(slug, SERVICE_KEY);
-    });
+  const anonRes = await fetchShortUrlRaw(slug, ANON_KEY);
+  const serviceRes = await fetchShortUrlRaw(slug, SERVICE_KEY);
 
-    if (Array.isArray(links) && links.length > 0 && links[0].original_url) {
-      matchedLink = links[0];
-    } else {
-      debugErrText += `links_empty_${Array.isArray(links) ? links.length : -1}`;
-    }
-  } catch (err: any) {
-    debugErrText += err?.message || String(err);
+  if (anonRes.status === 200) {
+    try {
+      const links = JSON.parse(anonRes.body);
+      if (Array.isArray(links) && links.length > 0 && links[0].original_url) {
+        matchedLink = links[0];
+      }
+    } catch (_) {}
+  }
+
+  if (!matchedLink && serviceRes.status === 200) {
+    try {
+      const links = JSON.parse(serviceRes.body);
+      if (Array.isArray(links) && links.length > 0 && links[0].original_url) {
+        matchedLink = links[0];
+      }
+    } catch (_) {}
   }
 
   if (matchedLink && matchedLink.original_url) {
@@ -90,7 +85,11 @@ export async function GET(
   }
 
   const res = NextResponse.redirect(`https://${APP_DOMAIN}/not-found`, 307);
-  res.headers.set('x-debug-slug', slug || 'EMPTY');
-  res.headers.set('x-debug-err', debugErrText.slice(0, 150));
+  res.headers.set('x-debug-anon-st', String(anonRes.status));
+  res.headers.set('x-debug-anon-bd', anonRes.body.slice(0, 80));
+  res.headers.set('x-debug-serv-st', String(serviceRes.status));
+  res.headers.set('x-debug-serv-bd', serviceRes.body.slice(0, 80));
+  res.headers.set('x-debug-env-url', SUPABASE_URL);
+  res.headers.set('x-debug-anon-key-start', ANON_KEY.slice(0, 15));
   return res;
 }
