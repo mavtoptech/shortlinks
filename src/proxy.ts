@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextFetchEvent, NextRequest } from 'next/server'
 import { updateSession } from '@/utils/supabase/middleware'
+import { createAdminClient } from '@/utils/supabase/admin'
 
 export const config = {
   matcher: [
@@ -53,8 +54,9 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
   }
 
   try {
-    // 3. Find the URL in the database
-    const { data: link, error } = await supabase
+    // 3. Find the URL in the database using admin client to bypass RLS restrictions on custom_domains table for anonymous visitors
+    const supabaseAdmin = createAdminClient();
+    const { data: link, error } = await supabaseAdmin
       .from('short_urls')
       .select(`
         *,
