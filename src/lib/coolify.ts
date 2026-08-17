@@ -38,6 +38,45 @@ async function updateFqdn(domains: string[]): Promise<void> {
   const unique = [...new Set(domains)].filter(Boolean);
   const domainsStr = unique.join(',');
 
+  // Extract clean domains from the https://domain:port format
+  const cleanDomains = unique.map(d => {
+    try {
+      const u = new URL(d);
+      return u.hostname;
+    } catch (e) {
+      return d.replace(/^https?:\/\//, '').replace(/:\d+$/, '');
+    }
+  });
+
+  // Generate Traefik/Caddy custom labels to ensure Coolify provisions the SSL certs properly
+  let labels = `traefik.enable=true
+traefik.http.middlewares.gzip.compress=true
+traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https\n`;
+
+  cleanDomains.forEach((domain, idx) => {
+    labels += `traefik.http.routers.http-${idx}-${COOLIFY_APP_UUID}.entryPoints=http
+traefik.http.routers.http-${idx}-${COOLIFY_APP_UUID}.middlewares=redirect-to-https
+traefik.http.routers.http-${idx}-${COOLIFY_APP_UUID}.rule=Host(\`${domain}\`) && PathPrefix(\`/\`)
+traefik.http.routers.http-${idx}-${COOLIFY_APP_UUID}.service=http-${idx}-${COOLIFY_APP_UUID}
+traefik.http.routers.https-${idx}-${COOLIFY_APP_UUID}.entryPoints=https
+traefik.http.routers.https-${idx}-${COOLIFY_APP_UUID}.middlewares=gzip
+traefik.http.routers.https-${idx}-${COOLIFY_APP_UUID}.rule=Host(\`${domain}\`) && PathPrefix(\`/\`)
+traefik.http.routers.https-${idx}-${COOLIFY_APP_UUID}.service=https-${idx}-${COOLIFY_APP_UUID}
+traefik.http.routers.https-${idx}-${COOLIFY_APP_UUID}.tls.certresolver=letsencrypt
+traefik.http.routers.https-${idx}-${COOLIFY_APP_UUID}.tls=true
+traefik.http.services.http-${idx}-${COOLIFY_APP_UUID}.loadbalancer.server.port=${APP_PORT}
+traefik.http.services.https-${idx}-${COOLIFY_APP_UUID}.loadbalancer.server.port=${APP_PORT}
+caddy_${idx}.encode=zstd gzip
+caddy_${idx}.handle_path.${idx}_reverse_proxy={{upstreams ${APP_PORT}}}
+caddy_${idx}.handle_path=/*
+caddy_${idx}.header=-Server
+caddy_${idx}.try_files={path} /index.html /index.php
+caddy_${idx}=https://${domain}\n`;
+  });
+
+  labels += `caddy_ingress_network=coolify`;
+  const base64Labels = Buffer.from(labels).toString('base64');
+
   const res = await fetch(`${COOLIFY_URL}/api/v1/applications/${COOLIFY_APP_UUID}`, {
     method: 'PATCH',
     headers: {
@@ -45,7 +84,7 @@ async function updateFqdn(domains: string[]): Promise<void> {
       'Content-Type': 'application/json',
       Accept: 'application/json',
     },
-    body: JSON.stringify({ domains: domainsStr }),
+    body: JSON.stringify({ domains: domainsStr, custom_labels: base64Labels }),
   });
 
   if (!res.ok) {
