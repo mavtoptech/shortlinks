@@ -1,3 +1,4 @@
+// Next.js 16.3 proxy middleware v1.0.1
 import { NextResponse } from 'next/server'
 import type { NextFetchEvent, NextRequest } from 'next/server'
 import { updateSession } from '@/utils/supabase/middleware'
