@@ -73,11 +73,21 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
     }
 
     // 4. Verify domain match
-    const isDefaultDomain = !link.domain_id;
-    // Custom domain match: compare clean hostname (no port) with stored domain
-    const isMatchingCustomDomain = link.custom_domains && link.custom_domains.domain === hostname;
-    // Links without a custom domain can be accessed via the main app domain or localhost
-    const isAppDomain = hostname.includes('localhost') || hostname.includes('127.0.0.1') || hostname.includes('shortlinks.fun');
+    const assignedDomain = (
+      Array.isArray(link.custom_domains)
+        ? link.custom_domains[0]?.domain
+        : link.custom_domains?.domain
+    )?.toLowerCase()?.trim();
+
+    const hostHeader = (request.headers.get('host') || '').split(':')[0].trim().toLowerCase();
+    const xForwardedHost = (request.headers.get('x-forwarded-host') || '').split(',')[0].split(':')[0].trim().toLowerCase();
+    const nextUrlHost = (request.nextUrl?.hostname || '').toLowerCase();
+
+    const candidateHosts = [hostHeader, xForwardedHost, nextUrlHost].filter(Boolean);
+
+    const isDefaultDomain = !link.domain_id || !assignedDomain;
+    const isMatchingCustomDomain = assignedDomain ? candidateHosts.includes(assignedDomain) : false;
+    const isAppDomain = candidateHosts.some(h => h.includes('localhost') || h.includes('127.0.0.1') || h.includes('shortlinks.fun'));
 
     if (isDefaultDomain) {
       // Default-domain links are accessible from the main app domain only
@@ -85,7 +95,7 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
         return NextResponse.rewrite(new URL('/not-found', request.url));
       }
     } else {
-      // Custom-domain links must be accessed from their assigned domain
+      // Custom-domain links must be accessed from their assigned domain or app domain
       if (!isMatchingCustomDomain && !isAppDomain) {
         return NextResponse.rewrite(new URL('/not-found', request.url));
       }
