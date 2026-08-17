@@ -53,29 +53,30 @@ export async function GET(
   let debugErrText = '';
 
   try {
-    // Try SERVICE_KEY first, fallback to ANON_KEY using isolated node:https
-    let links = await fetchShortUrlRaw(slug, SERVICE_KEY).catch(async () => {
-      return await fetchShortUrlRaw(slug, ANON_KEY);
+    // Query using ANON_KEY first
+    let links = await fetchShortUrlRaw(slug, ANON_KEY).catch(async (anonErr) => {
+      debugErrText = `anon_fail(${anonErr.message}) | `;
+      return await fetchShortUrlRaw(slug, SERVICE_KEY);
     });
 
     if (Array.isArray(links) && links.length > 0 && links[0].original_url) {
       matchedLink = links[0];
     } else {
-      debugErrText = `links_empty_${Array.isArray(links) ? links.length : -1}`;
+      debugErrText += `links_empty_${Array.isArray(links) ? links.length : -1}`;
     }
   } catch (err: any) {
-    debugErrText = err?.message || String(err);
+    debugErrText += err?.message || String(err);
   }
 
   if (matchedLink && matchedLink.original_url) {
-    // Asynchronously update click count using isolated node:https
+    // Asynchronously update click count
     try {
       const targetUrl = `${SUPABASE_URL}/rest/v1/short_urls?id=eq.${matchedLink.id}`;
       const req = https.request(targetUrl, {
         method: 'PATCH',
         headers: {
-          'apikey': SERVICE_KEY,
-          'Authorization': `Bearer ${SERVICE_KEY}`,
+          'apikey': ANON_KEY,
+          'Authorization': `Bearer ${ANON_KEY}`,
           'Content-Type': 'application/json',
           'Prefer': 'return=minimal',
         },
@@ -90,6 +91,6 @@ export async function GET(
 
   const res = NextResponse.redirect(`https://${APP_DOMAIN}/not-found`, 307);
   res.headers.set('x-debug-slug', slug || 'EMPTY');
-  res.headers.set('x-debug-err', debugErrText.slice(0, 100));
+  res.headers.set('x-debug-err', debugErrText.slice(0, 150));
   return res;
 }
