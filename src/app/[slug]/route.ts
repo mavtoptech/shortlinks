@@ -14,42 +14,40 @@ export async function GET(
     return NextResponse.redirect(`https://${APP_DOMAIN}/not-found`, 307);
   }
 
-  // Target URLs to try in order: Public domain -> Internal Kong Gateway (port 8000)
-  const candidateUrls = [
-    'https://supabase.mavtop.in',
-    'http://103.109.181.40:8000',
-    'http://supabase-kong:8000'
-  ];
-
   let debugInfo = [];
   let matchedLink = null;
 
-  for (const baseUrl of candidateUrls) {
-    for (const [keyName, keyVal] of [['ANON', ANON_KEY], ['SERVICE', SERVICE_KEY]]) {
-      try {
-        const res = await fetch(`${baseUrl}/rest/v1/short_urls?short_code=eq.${encodeURIComponent(slug)}&select=*,custom_domains(domain)`, {
-          headers: {
-            'apikey': keyVal,
-            'Authorization': `Bearer ${keyVal}`,
-            'Accept': 'application/json',
-          },
-          cache: 'no-store',
-        });
+  // Test with explicit Host: supabase.mavtop.in header to prevent Traefik loopback to link.callwaves.in
+  const keys = [['ANON', ANON_KEY], ['SERVICE', SERVICE_KEY]];
 
-        debugInfo.push(`${baseUrl}(${keyName}):${res.status}`);
+  for (const [keyName, keyVal] of keys) {
+    try {
+      const headers = new Headers();
+      headers.set('apikey', keyVal);
+      headers.set('Authorization', `Bearer ${keyVal}`);
+      headers.set('Accept', 'application/json');
+      headers.set('Host', 'supabase.mavtop.in');
 
-        if (res.ok) {
-          const links = await res.json();
-          if (Array.isArray(links) && links.length > 0 && links[0].original_url) {
-            matchedLink = links[0];
-            break;
-          }
+      const res = await fetch(`https://supabase.mavtop.in/rest/v1/short_urls?short_code=eq.${encodeURIComponent(slug)}&select=*,custom_domains(domain)`, {
+        headers,
+        cache: 'no-store',
+      });
+
+      debugInfo.push(`HostOverride(${keyName}):${res.status}`);
+
+      if (res.ok) {
+        const links = await res.json();
+        if (Array.isArray(links) && links.length > 0 && links[0].original_url) {
+          matchedLink = links[0];
+          break;
         }
-      } catch (err: any) {
-        debugInfo.push(`${baseUrl}(${keyName}):ERR(${err.message})`);
+      } else {
+        const text = await res.text();
+        debugInfo.push(`HostOverride(${keyName}):ERR(${text.slice(0, 50)})`);
       }
+    } catch (err: any) {
+      debugInfo.push(`HostOverride(${keyName}):EXC(${err.message})`);
     }
-    if (matchedLink) break;
   }
 
   if (matchedLink && matchedLink.original_url) {
@@ -61,6 +59,7 @@ export async function GET(
         'Authorization': `Bearer ${ANON_KEY}`,
         'Content-Type': 'application/json',
         'Prefer': 'return=minimal',
+        'Host': 'supabase.mavtop.in',
       },
       body: JSON.stringify({ clicks_count: (matchedLink.clicks_count || 0) + 1 }),
     }).catch(() => {});
@@ -69,6 +68,6 @@ export async function GET(
   }
 
   const res = NextResponse.redirect(`https://${APP_DOMAIN}/not-found`, 307);
-  res.headers.set('x-debug-candidates', debugInfo.join(' | '));
+  res.headers.set('x-debug-host-override', debugInfo.join(' | '));
   return res;
 }
