@@ -5,6 +5,7 @@ import { sendOtpEmail } from "@/lib/email";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient as createSupabaseJsClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 // Zod schemas for input validation and security checks
@@ -13,8 +14,55 @@ const passwordSchema = z.string().min(6, "Password must be at least 6 characters
 const nameSchema = z.string().min(2, "Name must be at least 2 characters").max(100, "Name is too long");
 const otpSchema = z.string().length(6, "Confirmation code must be 6 digits");
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://supabase.mavtop.in";
-const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4NjcyMzIwMCwiZXhwIjo0OTQyMzk2ODAwLCJyb2xlIjoiYW5vbiJ9.T9LfvS85FJi8_cK-e6WXgRP_yVOZUmrwawJEGVCH8Xk";
+const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || "https://supabase.mavtop.in").trim();
+const ANON_KEY = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4NjcyMzIwMCwiZXhwIjo0OTQyMzk2ODAwLCJyb2xlIjoiYW5vbiJ9.T9LfvS85FJi8_cK-e6WXgRP_yVOZUmrwawJEGVCH8Xk").trim();
+const SERVICE_KEY = (process.env.NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJzdXBhYmFzZSIsImlhdCI6MTc4NjcyMzIwMCwiZXhwIjo0OTQyMzk2ODAwLCJyb2xlIjoic2VydmljZV9yb2xlIn0.26RM4vH8xM7vdkwc2A_aI79kOvmyhPoZbRHzcHs_fY0").trim();
+
+// Direct GoTrue token endpoint — bypasses SDK JSON parsing issues entirely
+async function signInWithPasswordDirect(email: string, password: string): Promise<{
+  access_token?: string;
+  refresh_token?: string;
+  expires_at?: number;
+  user?: { id: string; email?: string; email_confirmed_at?: string | null };
+  error?: string;
+}> {
+  let res: Response;
+  try {
+    res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: {
+        "apikey": ANON_KEY,
+        "Authorization": `Bearer ${ANON_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email, password }),
+    });
+  } catch (err: any) {
+    return { error: `Network error: ${err.message}` };
+  }
+
+  const text = await res.text();
+
+  // Kong sometimes returns plain text "Unauthorized" — handle gracefully
+  if (!res.ok) {
+    let msg = text;
+    try {
+      const parsed = JSON.parse(text);
+      msg = parsed?.error_description || parsed?.message || parsed?.error || text;
+    } catch (_) {
+      if (text.toLowerCase().includes("unauthorized")) {
+        msg = "Invalid email or password";
+      }
+    }
+    return { error: msg };
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return { error: "Authentication service error. Please try again." };
+  }
+}
 
 export async function signUp(prevState: any, formData: FormData) {
   const emailInput = formData.get("email") as string;
@@ -28,16 +76,11 @@ export async function signUp(prevState: any, formData: FormData) {
 
     const supabaseAdmin = createAdminClient();
 
-    // Generate signup OTP via Supabase Admin API without invoking GoTrue mailer
     const { data, error } = await supabaseAdmin.auth.admin.generateLink({
       type: "signup",
       email,
       password,
-      options: {
-        data: {
-          name,
-        },
-      },
+      options: { data: { name } },
     });
 
     if (error) {
@@ -49,25 +92,16 @@ export async function signUp(prevState: any, formData: FormData) {
       return { error: "Failed to generate confirmation code" };
     }
 
-    // Dispatch email securely via ZeptoMail by Zoho
-    const emailResult = await sendOtpEmail({
-      to: email,
-      otp: emailOtp,
-      type: "signup",
-    });
-
+    const emailResult = await sendOtpEmail({ to: email, otp: emailOtp, type: "signup" });
     if (!emailResult.success) {
       return { error: emailResult.error || "Failed to send confirmation email" };
     }
   } catch (err: any) {
     console.error("[Auth Error - signUp]", err);
-    if (err instanceof z.ZodError) {
-      return { error: err.issues?.[0]?.message || err.message };
-    }
+    if (err instanceof z.ZodError) return { error: err.issues?.[0]?.message || err.message };
     return { error: err?.message || "An unexpected error occurred" };
   }
 
-  // Redirect user to email verification page with encoded email parameter
   redirect(`/verify-email?email=${encodeURIComponent(emailInput)}`);
 }
 
@@ -79,57 +113,47 @@ export async function verifyOtpAction(prevState: any, formData: FormData) {
     const email = emailSchema.parse(emailInput);
     const code = otpSchema.parse(codeInput);
 
-    // Use a clean isolated client — no cookie inheritance
-    const cleanClient = createSupabaseJsClient(SUPABASE_URL, ANON_KEY, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-
-    const { data, error } = await cleanClient.auth.verifyOtp({
-      email,
-      token: code,
-      type: "signup",
-    });
-
-    if (error) {
-      return { error: error.message };
+    let res: Response;
+    try {
+      res = await fetch(`${SUPABASE_URL}/auth/v1/verify`, {
+        method: "POST",
+        headers: {
+          "apikey": ANON_KEY,
+          "Authorization": `Bearer ${ANON_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, token: code, type: "signup" }),
+      });
+    } catch (err: any) {
+      return { error: `Network error: ${err.message}` };
     }
 
-    // Set session cookies manually so the user is logged in after verifying
-    if (data?.session) {
+    const text = await res.text();
+    if (!res.ok) {
+      let msg = text;
+      try { msg = JSON.parse(text)?.message || text; } catch (_) {}
+      return { error: msg };
+    }
+
+    const session = JSON.parse(text);
+    if (session?.access_token) {
       const cookieStore = await cookies();
-      const sessionJson = JSON.stringify({
-        access_token: data.session.access_token,
-        refresh_token: data.session.refresh_token,
-        expires_at: data.session.expires_at,
+      const serverClient = createServerClient(SUPABASE_URL, ANON_KEY, {
+        cookies: {
+          getAll() { return cookieStore.getAll(); },
+          setAll(cookiesToSet) {
+            try { cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options)); } catch {}
+          },
+        },
       });
-      cookieStore.set("sb-session", sessionJson, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "lax",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 7,
-      });
-      // Also set the standard Supabase SSR cookies
-      cookieStore.set("sb-access-token", data.session.access_token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "lax",
-        path: "/",
-        maxAge: 60 * 60,
-      });
-      cookieStore.set("sb-refresh-token", data.session.refresh_token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "lax",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 7,
+      await serverClient.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
       });
     }
   } catch (err: any) {
     console.error("[Auth Error - verifyOtpAction]", err);
-    if (err instanceof z.ZodError) {
-      return { error: err.issues?.[0]?.message || err.message };
-    }
+    if (err instanceof z.ZodError) return { error: err.issues?.[0]?.message || err.message };
     return { error: err?.message || "An unexpected error occurred" };
   }
 
@@ -143,37 +167,19 @@ export async function resendOtpAction(prevState: any, formData: FormData) {
     const email = emailSchema.parse(emailInput);
     const supabaseAdmin = createAdminClient();
 
-    // Use type: "magiclink" to generate a new 6-digit email_otp without requiring password
-    const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-      type: "magiclink",
-      email,
-    });
-
-    if (error) {
-      return { error: error.message };
-    }
+    const { data, error } = await supabaseAdmin.auth.admin.generateLink({ type: "magiclink", email });
+    if (error) return { error: error.message };
 
     const emailOtp = data?.properties?.email_otp;
-    if (!emailOtp) {
-      return { error: "Failed to generate new confirmation code" };
-    }
+    if (!emailOtp) return { error: "Failed to generate new confirmation code" };
 
-    const emailResult = await sendOtpEmail({
-      to: email,
-      otp: emailOtp,
-      type: "signup",
-    });
-
-    if (!emailResult.success) {
-      return { error: emailResult.error || "Failed to resend confirmation email" };
-    }
+    const emailResult = await sendOtpEmail({ to: email, otp: emailOtp, type: "signup" });
+    if (!emailResult.success) return { error: emailResult.error || "Failed to resend confirmation email" };
 
     return { success: true, message: "A new 6-digit confirmation code has been sent to your email." };
   } catch (err: any) {
     console.error("[Auth Error - resendOtpAction]", err);
-    if (err instanceof z.ZodError) {
-      return { error: err.issues?.[0]?.message || err.message };
-    }
+    if (err instanceof z.ZodError) return { error: err.issues?.[0]?.message || err.message };
     return { error: err?.message || "An unexpected error occurred" };
   }
 }
@@ -187,87 +193,57 @@ export async function signIn(prevState: any, formData: FormData) {
     const email = emailSchema.parse(emailInput);
     const password = passwordSchema.parse(passwordInput);
 
-    // Use a completely isolated Supabase JS client with no cookie inheritance
-    // This avoids stale browser cookies causing 401 at Kong API Gateway
-    const cleanAuthClient = createSupabaseJsClient(SUPABASE_URL, ANON_KEY, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
+    // Call GoTrue token endpoint directly to avoid SDK JSON parsing issues
+    const authResult = await signInWithPasswordDirect(email, password);
 
-    const { data, error } = await cleanAuthClient.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      const errMsg = error.message.toLowerCase();
+    if (authResult.error) {
+      const errMsg = authResult.error.toLowerCase();
       if (
         errMsg.includes("email not confirmed") ||
         errMsg.includes("email unconfirmed") ||
         errMsg.includes("confirm your email") ||
-        error.code === "email_not_confirmed"
+        errMsg.includes("not confirmed")
       ) {
         shouldRedirectToVerify = true;
         try {
           const supabaseAdmin = createAdminClient();
-          const linkRes = await supabaseAdmin.auth.admin.generateLink({
-            type: "signup",
-            email,
-            password,
-          });
+          const linkRes = await supabaseAdmin.auth.admin.generateLink({ type: "signup", email, password });
           const emailOtp = linkRes.data?.properties?.email_otp;
-          if (emailOtp) {
-            await sendOtpEmail({ to: email, otp: emailOtp, type: "signup" });
-          }
+          if (emailOtp) await sendOtpEmail({ to: email, otp: emailOtp, type: "signup" });
         } catch (_) {}
       } else {
-        return { error: error.message };
+        return { error: authResult.error };
       }
-    } else if (data?.session) {
-      if (!data.user.email_confirmed_at) {
+    } else if (authResult.access_token) {
+      const user = authResult.user;
+      if (user && !user.email_confirmed_at) {
         shouldRedirectToVerify = true;
         try {
           const supabaseAdmin = createAdminClient();
-          const linkRes = await supabaseAdmin.auth.admin.generateLink({
-            type: "signup",
-            email,
-            password,
-          });
+          const linkRes = await supabaseAdmin.auth.admin.generateLink({ type: "signup", email, password });
           const emailOtp = linkRes.data?.properties?.email_otp;
-          if (emailOtp) {
-            await sendOtpEmail({ to: email, otp: emailOtp, type: "signup" });
-          }
+          if (emailOtp) await sendOtpEmail({ to: email, otp: emailOtp, type: "signup" });
         } catch (_) {}
       } else {
-        // Write session cookies directly without using createServerClient
-        // This avoids any risk of the server client triggering 401 at Kong
+        // Set session cookies via server client
         const cookieStore = await cookies();
-        const { createServerClient } = await import("@supabase/ssr");
         const serverClient = createServerClient(SUPABASE_URL, ANON_KEY, {
           cookies: {
-            getAll() {
-              return cookieStore.getAll();
-            },
+            getAll() { return cookieStore.getAll(); },
             setAll(cookiesToSet) {
-              try {
-                cookiesToSet.forEach(({ name, value, options }) =>
-                  cookieStore.set(name, value, options)
-                );
-              } catch {}
+              try { cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options)); } catch {}
             },
           },
         });
-
         await serverClient.auth.setSession({
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
+          access_token: authResult.access_token,
+          refresh_token: authResult.refresh_token!,
         });
       }
     }
   } catch (err: any) {
     console.error("[Auth Error - signIn]", err);
-    if (err instanceof z.ZodError) {
-      return { error: err.issues?.[0]?.message || err.message };
-    }
+    if (err instanceof z.ZodError) return { error: err.issues?.[0]?.message || err.message };
     return { error: err?.message || "An unexpected error occurred" };
   }
 
@@ -280,18 +256,11 @@ export async function signIn(prevState: any, formData: FormData) {
 
 export async function signOut() {
   const cookieStore = await cookies();
-  const { createServerClient } = await import("@supabase/ssr");
   const serverClient = createServerClient(SUPABASE_URL, ANON_KEY, {
     cookies: {
-      getAll() {
-        return cookieStore.getAll();
-      },
+      getAll() { return cookieStore.getAll(); },
       setAll(cookiesToSet) {
-        try {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          );
-        } catch {}
+        try { cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options)); } catch {}
       },
     },
   });
@@ -306,27 +275,10 @@ export async function sendPasswordReset(prevState: any, formData: FormData) {
     const email = emailSchema.parse(emailInput);
     const supabaseAdmin = createAdminClient();
 
-    const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-      type: "recovery",
-      email,
-    });
-
-    if (error) {
-      // Prevent user enumeration attacks by returning generic success message
-      return {
-        success: true,
-        email,
-        message: "If an account with this email exists, we have sent a 6-digit confirmation code to your inbox.",
-      };
-    }
-
-    const emailOtp = data?.properties?.email_otp;
-    if (emailOtp) {
-      await sendOtpEmail({
-        to: email,
-        otp: emailOtp,
-        type: "recovery",
-      });
+    const { data, error } = await supabaseAdmin.auth.admin.generateLink({ type: "recovery", email });
+    if (!error) {
+      const emailOtp = data?.properties?.email_otp;
+      if (emailOtp) await sendOtpEmail({ to: email, otp: emailOtp, type: "recovery" });
     }
 
     return {
@@ -336,9 +288,7 @@ export async function sendPasswordReset(prevState: any, formData: FormData) {
     };
   } catch (err: any) {
     console.error("[Auth Error - sendPasswordReset]", err);
-    if (err instanceof z.ZodError) {
-      return { error: err.issues?.[0]?.message || err.message };
-    }
+    if (err instanceof z.ZodError) return { error: err.issues?.[0]?.message || err.message };
     return { error: err?.message || "An unexpected error occurred" };
   }
 }
@@ -351,24 +301,14 @@ export async function verifyResetCodeAction(prevState: any, formData: FormData) 
     const email = emailSchema.parse(emailInput);
     const code = otpSchema.parse(codeInput);
 
-    // Use isolated client for OTP verification
     const cleanClient = createSupabaseJsClient(SUPABASE_URL, ANON_KEY, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const { error } = await cleanClient.auth.verifyOtp({
-      email,
-      token: code,
-      type: "recovery",
-    });
-
-    if (error) {
-      return { error: error.message };
-    }
+    const { error } = await cleanClient.auth.verifyOtp({ email, token: code, type: "recovery" });
+    if (error) return { error: error.message };
   } catch (err: any) {
-    if (err instanceof z.ZodError) {
-      return { error: err.issues?.[0]?.message || err.message };
-    }
+    if (err instanceof z.ZodError) return { error: err.issues?.[0]?.message || err.message };
     return { error: "An unexpected error occurred" };
   }
 
@@ -381,33 +321,19 @@ export async function updatePasswordAction(prevState: any, formData: FormData) {
   try {
     const password = passwordSchema.parse(passwordInput);
     const cookieStore = await cookies();
-    const { createServerClient } = await import("@supabase/ssr");
-    const supabase = createServerClient(SUPABASE_URL, ANON_KEY, {
+    const serverClient = createServerClient(SUPABASE_URL, ANON_KEY, {
       cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
+        getAll() { return cookieStore.getAll(); },
         setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
-          } catch {}
+          try { cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options)); } catch {}
         },
       },
     });
 
-    const { error } = await supabase.auth.updateUser({
-      password: password,
-    });
-
-    if (error) {
-      return { error: error.message };
-    }
+    const { error } = await serverClient.auth.updateUser({ password });
+    if (error) return { error: error.message };
   } catch (err: any) {
-    if (err instanceof z.ZodError) {
-      return { error: err.issues?.[0]?.message || err.message };
-    }
+    if (err instanceof z.ZodError) return { error: err.issues?.[0]?.message || err.message };
     return { error: "An unexpected error occurred" };
   }
 
